@@ -1,0 +1,26 @@
+{
+  "name": "slotsync-backend",
+  "version": "1.0.0",
+  "description": "SlotSync backend - Clash-Free College Timetable Generator (Express + JSON file store, Prisma schema for Postgres)",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/seed.js",
+    "db:health": "node -e \"require('./src/db').health().then(h=>{console.log(JSON.stringify(h,null,2));process.exit(h.ok?0:1)}).catch(e=>{console.error(e.message);process.exit(1)})\"",
+    "db:seed:sqlite": "node src/seed.js --force",
+    "db:seed:mysql": "node src/seed.js --force"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "mysql2": "^3.11.0",
+    "zod": "^3.23.8"
+  }
+}

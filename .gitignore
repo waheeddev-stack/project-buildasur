@@ -39,3 +39,4 @@ coverage/
 *.sqlite
 *.db
 uploads/
+backend/data/db.json

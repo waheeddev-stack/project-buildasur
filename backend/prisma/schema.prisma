@@ -1,0 +1,240 @@
+// Prisma schema for SlotSync production (PostgreSQL).
+// Local dev runs on the file-based JSON store in data/db.json (zero-config).
+// To go prod: set DATABASE_URL and run `npx prisma migrate dev`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  hod
+  teacher
+  student
+}
+
+enum RoomType {
+  lecture
+  lab
+  seminar
+}
+
+enum SubjectType {
+  theory
+  lab
+}
+
+enum TimetableStatus {
+  draft
+  published
+}
+
+enum RequestStatus {
+  pending
+  approved
+  rejected
+}
+
+enum TokenType {
+  invite
+  reset
+  refresh
+}
+
+model Department {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  hodUserId String?   @map("hod_user_id")
+  hodUser   User?     @relation("DeptHod", fields: [hodUserId], references: [id])
+  users     User[]    @relation("UserDept")
+  teachers  Teacher[]
+
+  @@map("departments")
+}
+
+model User {
+  id                  String      @id @default(cuid())
+  email               String      @unique
+  passwordHash        String      @map("password_hash")
+  role                Role
+  departmentId        String?     @map("department_id")
+  department          Department? @relation("UserDept", fields: [departmentId], references: [id])
+  teacherId           String?     @map("teacher_id")
+  teacher             Teacher?    @relation(fields: [teacherId], references: [id])
+  batchId             String?     @map("batch_id")
+  isActive            Boolean     @default(true) @map("is_active")
+  mustChangePassword  Boolean     @default(false) @map("must_change_password")
+  failedLogins        Int         @default(0) @map("failed_logins")
+  lockedUntil         DateTime?   @map("locked_until")
+  lastLoginAt         DateTime?   @map("last_login_at")
+  hodOf               Department[] @relation("DeptHod")
+  tokens              AuthToken[]
+  auditActions        AuditLog[]  @relation("AuditActor")
+
+  @@map("users")
+}
+
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id])
+  type      TokenType
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  @@map("auth_tokens")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?  @map("actor_user_id")
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id])
+  action      String
+  targetType  String?  @map("target_type")
+  targetId    String?  @map("target_id")
+  before      Json?
+  after       Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}
+
+model Teacher {
+  id            String      @id @default(cuid())
+  name          String
+  employeeId    String?     @unique @map("employee_id")
+  departmentId  String?     @map("department_id")
+  department    Department? @relation(fields: [departmentId], references: [id])
+  isActive      Boolean     @default(true) @map("is_active")
+  maxHoursDay   Int         @default(6) @map("max_hours_day")
+  maxHoursWeek  Int         @default(24) @map("max_hours_week")
+  users         User[]
+  unavailability TeacherUnavailability[]
+  availRequests AvailabilityRequest[]
+  assignments   Assignment[]
+
+  @@map("teachers")
+}
+
+model TeacherUnavailability {
+  teacherId String  @map("teacher_id")
+  teacher   Teacher @relation(fields: [teacherId], references: [id])
+  day       String
+  period    Int
+
+  @@id([teacherId, day, period])
+  @@map("teacher_unavailability")
+}
+
+model AvailabilityRequest {
+  id        String        @id @default(cuid())
+  teacherId String        @map("teacher_id")
+  teacher   Teacher       @relation(fields: [teacherId], references: [id])
+  day       String
+  period    Int
+  status    RequestStatus @default(pending)
+  decidedBy String?       @map("decided_by")
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@map("availability_requests")
+}
+
+model Room {
+  id       String   @id @default(cuid())
+  name     String   @unique
+  capacity Int
+  type     RoomType
+
+  @@map("rooms")
+}
+
+model Subject {
+  id               String      @id @default(cuid())
+  code             String      @unique
+  name             String
+  type             SubjectType
+  sessionsPerWeek  Int         @map("sessions_per_week")
+  periodsPerSession Int        @default(1) @map("periods_per_session")
+  assignments      Assignment[]
+
+  @@map("subjects")
+}
+
+model Batch {
+  id            String  @id @default(cuid())
+  program       String
+  semester      Int
+  division      String
+  strength      Int
+  parentBatchId String? @map("parent_batch_id")
+  parent        Batch?  @relation("BatchSplit", fields: [parentBatchId], references: [id])
+  children      Batch[] @relation("BatchSplit")
+  assignments   Assignment[]
+
+  @@map("batches")
+}
+
+model Assignment {
+  id               String   @id @default(cuid())
+  subjectId        String   @map("subject_id")
+  subject          Subject  @relation(fields: [subjectId], references: [id])
+  batchId          String   @map("batch_id")
+  batch            Batch    @relation(fields: [batchId], references: [id])
+  teacherId        String   @map("teacher_id")
+  teacher          Teacher  @relation(fields: [teacherId], references: [id])
+  requiredRoomType RoomType? @map("required_room_type")
+  sessions         Session[]
+
+  @@map("assignments")
+}
+
+model TimeSlot {
+  id        String  @id @default(cuid())
+  day       String
+  period    Int
+  startTime String  @map("start_time")
+  endTime   String  @map("end_time")
+  isBreak   Boolean @default(false) @map("is_break")
+
+  @@unique([day, period])
+  @@map("time_slots")
+}
+
+model Timetable {
+  id        String          @id @default(cuid())
+  term      String          @default("2026-odd")
+  version   Int             @default(1)
+  status    TimetableStatus @default(draft)
+  score     Float?
+  createdBy String?         @map("created_by")
+  createdAt DateTime        @default(now()) @map("created_at")
+  sessions  Session[]
+
+  @@map("timetables")
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  timetableId  String    @map("timetable_id")
+  timetable    Timetable @relation(fields: [timetableId], references: [id])
+  assignmentId String?   @map("assignment_id")
+  assignment   Assignment? @relation(fields: [assignmentId], references: [id])
+  slotId       String    @map("slot_id")
+  roomId       String    @map("room_id")
+  teacherId    String    @map("teacher_id")
+  batchId      String    @map("batch_id")
+  sessionGroup String?   @map("session_group")
+  isLocked     Boolean   @default(false) @map("is_locked")
+
+  @@unique([timetableId, slotId, teacherId])
+  @@unique([timetableId, slotId, roomId])
+  @@unique([timetableId, slotId, batchId])
+  @@map("sessions")
+}

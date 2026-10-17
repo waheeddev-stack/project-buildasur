@@ -71,6 +71,12 @@ function RequireAuth({ children }) {
   return children;
 }
 
+function RequireRole({ roles, children }) {
+  const user = useAuth((s) => s.user);
+  if (user && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  return children;
+}
+
 function RedirectIfAuthed({ children }) {
   const user = useAuth((s) => s.user);
   const token = useAuth((s) => s.accessToken);
@@ -114,7 +120,9 @@ export default function App() {
                 path="/generate"
                 element={
                   <RequireAuth>
-                    <Generate />
+                    <RequireRole roles={['admin', 'hod']}>
+                      <Generate />
+                    </RequireRole>
                   </RequireAuth>
                 }
               />

@@ -56,6 +56,8 @@ function usePaletteData(enabled) {
 export default function Layout() {
   const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
+  const canGenerate = !user || user.role === 'admin' || user.role === 'hod';
+  const nav = NAV.filter((item) => item.to !== '/generate' || canGenerate);
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -133,7 +135,7 @@ export default function Layout() {
             <BulbaLogo size={30} />
           </NavLink>
           <div className="nav-links">
-            {NAV.map(({ to, label, icon: Icon, end }) => (
+            {nav.map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')}>
                 <Icon size={16} />
                 <span>{label}</span>
@@ -171,7 +173,7 @@ export default function Layout() {
           </div>
           {menuOpen && (
             <div className="nav-mobile-menu" role="menu" aria-label="Mobile navigation">
-              {NAV.map(({ to, label, icon: Icon, end }) => (
+              {nav.map(({ to, label, icon: Icon, end }) => (
                 <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
                   <Icon size={18} />
                   <span>{label}</span>

@@ -10,7 +10,8 @@
     "seed": "node src/seed.js",
     "db:health": "node -e \"require('./src/db').health().then(h=>{console.log(JSON.stringify(h,null,2));process.exit(h.ok?0:1)}).catch(e=>{console.error(e.message);process.exit(1)})\"",
     "db:seed:sqlite": "node src/seed.js --force",
-    "db:seed:mysql": "node src/seed.js --force"
+    "db:seed:mysql": "node src/seed.js --force",
+    "tidb:setup": "node src/tidb-setup.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

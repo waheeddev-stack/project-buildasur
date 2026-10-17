@@ -44,7 +44,7 @@ Monorepo with **separate** `backend/` and `frontend/` (per `PRD Clash-Free Colle
 - **Subjects** — code, name, type (`theory` / `lab`), weekly sessions, session length in periods.
 - **Batches** — program, semester, division, strength; optional parent batch for split-lab sub-batches.
 - **Assignments** — link subject + batch + teacher (+ required room type).
-- **Time grid** — working days, periods per day, period timings, break periods (admin only).
+- **Time grid** — working days, periods per day, period timings, break periods (admin only). The seeded grid reserves **period 5 (13:00–14:00) as a lunch break on every day**; sessions are never placed there.
 - **Accounts** — admins and HODs create, **edit and delete the teacher and student logins** (email, password, role, and optional link to a teacher record or batch). Users sign in with email + password only; the server returns their role.
 - Guard rails baked in: unique room names and subject codes, referential checks on assignments, HOD department scoping, and audit logging on every write.
 - **One source of truth per role** — everyone (admin, HOD, teacher, student) reads the *same* teachers, rooms and availability lists, so a batch, teacher or room view never disagrees across roles. Writes stay role-scoped; only reads are unified.
@@ -75,8 +75,9 @@ Monorepo with **separate** `backend/` and `frontend/` (per `PRD Clash-Free Colle
 - **Free-room finder** — `GET /api/rooms/free?day=Tue&period=3`.
 
 ### UX / platform
+- **Bulba chatbot** 🌱 — multilingual, read-only AI assistant (see the AI section).
 - **Command palette** (`Ctrl/Cmd + K`) to jump to any batch, teacher or room.
-- **Dark / light theme**, persisted.
+- **Bulbasaur theme** — a leafy green/teal palette with dark and light modes, persisted.
 - **Audit log** of sensitive actions (create/update/delete, move, publish, snapshot, generate, seed, login).
 - **Responsive** across phones, tablets and desktop: hamburger navigation, 44px touch targets, fluid typography, stacking layouts.
 - **Graceful states** — designed loading, empty and error states on every screen, plus a global error boundary that prevents white screens.
@@ -105,30 +106,59 @@ their own account or manage an admin account.
 
 ---
 
-## AI assistant
+## AI assistant — Bulba 🌱
 
 AI is an **assistant, never the scheduler**: the solver and database constraints own
-correctness; AI only translates, explains and summarises. It is **off by default**
-(`AI_ENABLED=false`) and every endpoint degrades gracefully, so the app works fully
-without it. The backend lives in `backend/src/ai.js` and `backend/src/routes/ai.js`.
+correctness; AI only reads, translates, explains and summarises. It **works with no keys
+at all** via an on-device engine, and upgrades to a hosted multilingual chatbot when you
+add a provider key. Nothing here ever writes timetable data.
+
+The floating **🌱 Ask** button (bottom-right, on every signed-in screen) opens **Bulba**,
+a multi-turn chatbot with a language switcher (Auto, English, हिन्दी, తెలుగు, தமிழ், বাংলা,
+मराठी, Español, Français, Deutsch, العربية, 日本語, 中文, …). It replies in the language you
+write in.
 
 | ID | Feature | Endpoint | Status |
 | --- | --- | --- | --- |
-| A1 | Rules in plain English → structured constraint (admin previews/confirms) | `POST /api/ai/rules/parse` | Stub |
-| A2 | Infeasibility explainer (plain words + top fixes) | `POST /api/ai/explain` | Stub |
+| A0 | Multilingual chat (Bulba) — hosted provider with on-device fallback | `POST /api/ai/chat` | Live |
+| A1 | Rules in plain English → structured availability suggestion (admin previews/confirms) | `POST /api/ai/rules/parse` | Live (hosted + on-device) |
+| A2 | Infeasibility explainer (plain words + top fixes) | `POST /api/ai/explain` | Live (hosted + on-device) |
 | A3 | Smart CSV import — map messy headers, flag likely typos | `POST /api/ai/import/map-columns` | Planned |
-| A4 | Ask SlotSync — natural-language Q&A over published data (AI picks intent + params; a fixed read-only query runs) | `POST /api/ai/ask` | Stub |
-| A5 | Change notes — one-line friendly summary when a published timetable changes | `POST /api/ai/explain` | Stub |
-| — | Quota / provider health for the admin dashboard | `GET /api/ai/status` | Live |
+| A4 | Ask SlotSync — natural-language Q&A over the timetable | `POST /api/ai/ask` | Live (on-device) |
+| A5 | Change notes — friendly summary when a timetable changes | `POST /api/ai/explain` | Live (hosted + on-device) |
+| — | Provider + health for the assistant badge | `GET /api/ai/status` | Live |
 
-Planned providers: **NVIDIA NIM** (primary, OpenAI-compatible) with **OpenRouter `:free`**
-models as fallback, behind a single `LLMProvider` interface.
+**Providers** live in `backend/src/llm.js` and speak the OpenAI-compatible
+`/chat/completions` protocol. **A self-hosted server on your VM is primary; any error/timeout/
+rate-limit rolls to the next configured provider** (default order
+`local → openrouter → google → nvidia`, overridable with `AI_FALLBACK_ORDER`). Only providers
+that are configured are in the chain (`local` needs `LOCAL_AI_BASE_URL`; the hosted ones need
+a key). When any provider is ready, chat, rules-parsing and explanations all use it; otherwise
+the on-device engine handles everything.
 
-Planned guardrails: AI never writes timetable data; JSON-only output validated with Zod
-(one retry, then fall back to the manual form); prompt-hash caching with a per-college
-daily budget; privacy (send codes/counts, never student PII); 429 back-off via `Retry-After`;
-an off-switch feature flag; and an `ai_requests` audit table (feature, provider, model,
-latency, status, prompt hash — no raw personal data).
+| Order | Provider | `AI_PROVIDER` | Default model | Config |
+| --- | --- | --- | --- | --- |
+| 1 | Local VM *(primary)* | `local` | `local-model` | `LOCAL_AI_BASE_URL` (no key needed) |
+| 2 | OpenRouter | `openrouter` | `poolside/laguna-xs-2.1:free` | `OPENROUTER_API_KEY` |
+| 3 | Google AI Studio | `google` | `gemini-3.8-flash` | `GEMINI_API_KEY` |
+| 4 | NVIDIA NIM | `nvidia` | `meta/llama-3.3-70b-instruct` | `NVIDIA_API_KEY` |
+
+Setup: for your own VM, paste your endpoint into `LOCAL_AI_BASE_URL` and set `LOCAL_AI_MODEL`
+to the model id it serves. **A bare Cloudflare Tunnel link works as-is** — e.g.
+`https://random-words.trycloudflare.com` (the client appends `/v1` for you; a pasted path like
+`http://my-vm:11434/v1` is kept unchanged). If the tunnel is behind Cloudflare Access, set
+`CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` and the service-token headers are added
+automatically. Add any hosted keys too, then restart the backend — `AI_PROVIDER=local` and
+`AI_FALLBACK_ORDER` are already set. A local server needs no API key unless it enforces one
+(`LOCAL_AI_API_KEY`). Swap the OpenRouter model with
+`AI_MODEL_OPENROUTER` (e.g. `openrouter/auto`). Keys are never logged or returned to the client.
+Each attempt has a 30 s timeout; if every provider fails, the endpoint falls back to the
+on-device engine and marks the reply `fallback: true`. The chat response also reports
+`provider`, `tried` and `fellBack`.
+
+Guardrails: AI never writes timetable data; the on-device path is deterministic and
+offline; the hosted path sends only a compact data digest (codes, names, counts) — no
+student PII; and a 30 s timeout protects the UI.
 
 ---
 
@@ -156,7 +186,8 @@ mernstack/
 │     ├─ auth.js                # JWT, requireAuth/optionalAuth/requireRole, dept scoping
 │     ├─ validate.js            # Zod middleware
 │     ├─ solver.js              # Timetable engine
-│     ├─ ai.js                  # AI feature flag + fallbacks
+│     ├─ ai.js                  # on-device assistant engine (parse/explain/ask)
+│     ├─ llm.js                 # multi-provider LLM client (Local VM/OpenRouter/Google/NVIDIA)
 │     ├─ seed.js                # Demo data seeder
 │     └─ routes/                # auth, users, availability, masters, grid, timetables, jobs, ai, misc
 ├─ frontend/
@@ -165,7 +196,7 @@ mernstack/
 │     ├─ api.js                 # fetch wrapper with token refresh
 │     ├─ store.js               # Zustand: auth, theme, timetable view
 │     ├─ index.css              # Glass-minimal design system
-│     ├─ components/            # Layout, SessionChip, StatTile
+│     ├─ components/            # Layout, SessionChip, StatTile, Assistant (Bulba chat)
 │     └─ pages/                 # Login, Dashboard, Setup, Generate, Grid, Today
 ├─ package.json                 # Workspace scripts
 └─ PRD Clash-Free College Timetable Generator.md
@@ -360,11 +391,12 @@ Config: `timeLimitMs` (default 25 s), `maxNodes` (default 60,000), and an `onPro
 
 ## Design system
 
-Glass-minimal (PRD §8.2), defined in `frontend/src/index.css`:
+Glass-minimal (PRD §8.2) with a **Bulbasaur palette** 🌱, defined in `frontend/src/index.css`:
 
-- **Background** — near-black `#0B0B12` (dark) or off-white `#F7F7FB` (light), with one soft blurred accent glow.
-- **Glass surfaces** — `rgba(255,255,255,0.06)`, `backdrop-filter: blur(14px)`, 1px border, 20px radius, one soft shadow; solid fallback where backdrop-filter/reduced-transparency is unsupported.
-- **Accent** — a single violet→pink gradient for the primary action, active states and success moments.
+- **Background** — deep forest `#08120D` (dark) or mint `#EEFAF1` (light), with one soft blurred green/teal glow.
+- **Glass surfaces** — a hint of seafoam `rgba(180,255,214,0.06)`, `backdrop-filter: blur(14px)`, 1px border, 20px radius, one soft shadow; solid fallback where backdrop-filter/reduced-transparency is unsupported.
+- **Accent** — a single leaf-green→teal gradient (`#22C55E → #0D9488`) for the primary action, active states and success moments; the brand carries a 🌱 bulb motif.
+- **Bulba scene** — an original inline-SVG leaf-creature mascot on lush green mountains (`frontend/src/components/BulbaScene.jsx`): layered misty ridges, pine trees, sun and meadow. Used as the login backdrop and dashboard hero, with the mountain range (`BulbaMountains`) reused as a soft app-wide background layer behind the glass cards. No external image assets — it stays crisp and theme-aware at any size.
 - **Type** — Plus Jakarta Sans, 8px spacing grid, large headings, 14–16px body.
 - **Motion** — restrained 150–250 ms transitions, one confetti burst on a zero-conflict result; honours `prefers-reduced-motion`.
 - **Accessibility** — WCAG-AA contrast with scrims over glass, icon + label (never colour alone) for states, full keyboard alternative for drag-and-drop, 44px touch targets, and a mobile-first layout.
@@ -379,11 +411,27 @@ Glass-minimal (PRD §8.2), defined in `frontend/src/index.css`:
 | --- | --- | --- |
 | `PORT` | `4000` | API port |
 | `JWT_SECRET` | `dev-secret-change` | Signing secret (change in prod) |
-| `AI_ENABLED` | `false` | Master AI feature flag |
+| `AI_ENABLED` | `false` | Legacy flag; the on-device assistant always runs |
+| `AI_PROVIDER` | `local` | Primary provider: `local` \| `openrouter` \| `google` \| `nvidia` |
+| `AI_FALLBACK_ORDER` | `local,openrouter,google,nvidia` | Order to try providers in; only configured ones are used |
+| `LOCAL_AI_BASE_URL` | — | Self-hosted OpenAI-compatible base URL on your VM — enables `local` (no key) |
+| `LOCAL_AI_MODEL` | `local-model` | Model id your VM serves |
+| `LOCAL_AI_API_KEY` | — | Only if your local server requires a key |
+| `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` | — | Only if the tunnel is behind Cloudflare Access (added as service-token headers) |
+| `OPENROUTER_API_KEY` | — | OpenRouter key (fallback 1) |
+| `GEMINI_API_KEY` | — | Google AI Studio key (fallback 2) |
+| `NVIDIA_API_KEY` | — | NVIDIA NIM key (fallback 3) |
+| `AI_MODEL` | per provider | Primary model override (`AI_MODEL_OPENROUTER` / `AI_MODEL_GOOGLE` / `AI_MODEL_NVIDIA` also work) |
+| `AI_BASE_URL` | per provider | Base URL override for the primary `/chat/completions` API |
+| `OPENROUTER_SITE_URL` | `http://localhost:5173` | Sent as OpenRouter's `HTTP-Referer` |
 | `FRONTEND_URL` | `http://localhost:5173` | CORS origin |
 | `DB_DIALECT` | `sqlite` | `sqlite` or `mysql` |
 | `SQLITE_FILE` | `./data/slotsync.sqlite` | SQLite file path |
 | `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` | — | Used when `DB_DIALECT=mysql` |
+| `MYSQL_SSL` | `require` | TLS for managed MySQL; `disable` to turn off |
+| `MYSQL_CA` | — | Path to a CA cert for full TLS verification |
+| `TIDB_HOST` / `TIDB_PORT` / `TIDB_USER` / `TIDB_PASSWORD` / `TIDB_DATABASE` | — | TiDB Cloud connection (used by `npm run tidb:setup`) |
+| `TIDB_CA` / `TIDB_SSL` | — | Optional TLS verification for TiDB Cloud |
 
 **frontend/.env** (see `frontend/.env.example`):
 
@@ -404,8 +452,26 @@ Root (`package.json`):
 | `npm run build` | Build the frontend |
 | `npm run start:backend` | Start the API (no watch) |
 
-Backend (`backend/package.json`): `start`, `dev`, `seed`, `db:health`, `db:seed:sqlite`, `db:seed:mysql`.
+Backend (`backend/package.json`): `start`, `dev`, `seed`, `db:health`, `db:seed:sqlite`, `db:seed:mysql`, `tidb:setup`.
 Frontend (`frontend/package.json`): `dev` (port 5173), `build`, `preview`.
+
+### TiDB Cloud provisioning
+
+TiDB Cloud is a managed, MySQL-compatible database. Copy your connection values from
+**Connect → MySQL client** into `backend/.env` (`TIDB_HOST`, `TIDB_PORT`, `TIDB_USER`,
+`TIDB_PASSWORD`, `TIDB_DATABASE`), then run the provisioning script:
+
+```powershell
+npm run tidb:setup --prefix backend
+```
+
+It connects over TLS, creates the `slotsync` database and the `records` + `meta` tables,
+and loads the full seed (departments, teachers, rooms, subjects, batches, assignments,
+time slots, grid and demo users). It is idempotent — re-running replaces the rows.
+
+To point the running API at TiDB Cloud, set `DB_DIALECT=mysql` and mirror the `TIDB_*`
+values into the `MYSQL_*` vars (same host/port/user/password/database), then restart.
+TLS is on by default; drop your TiDB CA into `MYSQL_CA` for full verification.
 
 ---
 
@@ -419,6 +485,12 @@ Frontend (`frontend/package.json`): `dev` (port 5173), `build`, `preview`.
 - A roles/accounts smoke run checks: admin and HOD see the **same** teacher list and availability →
   availability write is visible to the other role → create / edit / login-with-new-password / delete
   a teacher or student account → unauthenticated `/api/users` returns `401` → duplicate email returns `409`.
+- An AI smoke run checks: `/api/ai/status` reports `ready:false` with no key and `ready:true` once a
+  key is set → `/api/ai/chat` falls back to the on-device engine with `fallback:true` when unconfigured
+  → with a provider configured it calls `/chat/completions` and includes the data digest in the system
+  prompt → the key is never returned → unauthenticated `/api/ai/chat` returns `401`.
+- A lunch-break check confirms period 5 is `13:00–14:00` and `is_break` on all days, and that a
+  generated timetable places **zero** sessions in it.
 - `GET /api/health` reports the active dialect and connectivity.
 
 The PRD's release gates (see §9.1) call for an automated clash audit before any publish (implemented),

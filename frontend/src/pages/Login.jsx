@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { apiPost, setAccessToken } from '../api.js';
 import { useAuth } from '../store.js';
+import { BulbaLogo, IconArrowRight } from '../components/Icons.jsx';
 
 // Landing page per role. Accounts are provisioned by an admin or HOD; the server
 // authenticates the email + password and returns the role, which decides where we go.
@@ -42,19 +43,23 @@ export default function Login() {
   return (
     <div className="app-shell">
       <div className="app-glow" aria-hidden="true" />
-      <main className="container" style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
+      <div className="login-bg" aria-hidden="true" />
+      <main className="container login-wrap" style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
         <motion.div
-          className="glass card"
+          className="glass card login-card"
           style={{ width: 'min(420px, 94vw)' }}
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22 }}
         >
-          <h2 style={{ fontSize: 28 }}>
-            Slot<span style={{ background: 'linear-gradient(135deg,#8b5cf6,#ec4899)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Sync</span>
+          <div className="login-mascot">
+            <img className="login-mascot-img" src="/bulbasaur.jpeg" alt="Bulbasaur, the leafy timetable mascot" />
+          </div>
+          <h2 style={{ fontSize: 30, margin: '0 0 2px' }}>
+            <BulbaLogo size={38} className="login-logo" />
           </h2>
           <p className="muted" style={{ marginTop: 0 }}>
-            Clash-free timetables. No clashes. We checked twice.
+            Gotta schedule ’em all. Clash-free timetables, minus the chaos — we checked twice. 🌱
           </p>
           <form onSubmit={submit} className="stack">
             <label className="field">
@@ -68,6 +73,7 @@ export default function Login() {
             {error && <div className="error-box">{error}</div>}
             <button className="btn btn-gradient" disabled={busy} type="submit">
               {busy ? 'Logging you in…' : 'Log in'}
+              {!busy && <IconArrowRight size={18} />}
             </button>
           </form>
           <p className="microcopy mt">

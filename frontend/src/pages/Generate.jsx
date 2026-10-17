@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { apiGet, apiPost, backendDown } from '../api.js';
+import { IconPokeball } from '../components/Icons.jsx';
 
 const CHECKS = [
   'Teachers free in every slot',
@@ -18,6 +19,20 @@ export default function Generate() {
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
   const [term, setTerm] = useState('Fall 2026');
+  const [aiExplain, setAiExplain] = useState(null);
+  const [aiBusy, setAiBusy] = useState(false);
+
+  const explainWithAi = async (report) => {
+    setAiBusy(true);
+    try {
+      const res = await apiPost('/api/ai/explain', { report });
+      setAiExplain(res);
+    } catch (e) {
+      setAiExplain({ plainWords: backendDown(e) ? 'Start backend on :4000 — cannot reach the assistant.' : e.message });
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!jobId) return;
@@ -47,6 +62,7 @@ export default function Generate() {
   const start = async () => {
     setError('');
     setJob(null);
+    setAiExplain(null);
     setStarting(true);
     try {
       const data = await apiPost('/api/timetables/generate', { term });
@@ -91,7 +107,9 @@ export default function Generate() {
             disabled={starting}
             whileTap={{ scale: 0.97 }}
           >
-            {starting ? 'Warming up the solver…' : jobId ? '✨ Regenerate' : '✨ Generate timetable'}
+            {starting ? (
+              <><IconPokeball className="pokeball-spin" size={18} /> Warming up the solver…</>
+            ) : jobId ? '✨ Regenerate' : '✨ Generate timetable'}
           </motion.button>
         </div>
         {error && <div className="error-box mt" style={{ textAlign: 'left' }}>⚠️ {error}</div>}
@@ -115,6 +133,7 @@ export default function Generate() {
           {status === 'completed' && (
             <div>
               {zeroClash && <div className="confetti-burst" aria-hidden="true">🎉 ✨ 🎊 ✨ 🎉</div>}
+              {zeroClash && <div className="levelup mt">⚡ It’s super effective! Timetable forged.</div>}
               <p>
                 {zeroClash ? <strong>No clashes. We checked twice. 🎉</strong> : <strong>{conflicts} conflicts need a look.</strong>}
                 {score != null && <span className="muted"> Soft score: {score}.</span>}
@@ -147,6 +166,20 @@ export default function Generate() {
                     ))}
                   </ul>
                 </>
+              )}
+              <button type="button" className="btn btn-ghost btn-sm mt" disabled={aiBusy} onClick={() => explainWithAi(infeasibility || job?.error || '')}>
+                {aiBusy ? 'Thinking…' : '✨ Explain in plain words'}
+              </button>
+            </div>
+          )}
+          {aiExplain && (
+            <div className="glass card mt" style={{ textAlign: 'left' }}>
+              <strong>✨ {aiExplain.headline || 'Assistant'}</strong>
+              <p style={{ margin: '6px 0' }}>{aiExplain.plainWords || aiExplain.summary}</p>
+              {Array.isArray(aiExplain.fixes) && aiExplain.fixes.length > 0 && (
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                  {aiExplain.fixes.map((f) => <li key={f}>{f}</li>)}
+                </ul>
               )}
             </div>
           )}

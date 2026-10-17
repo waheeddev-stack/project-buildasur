@@ -3,6 +3,35 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../api.js';
 import { useAuth, useTheme } from '../store.js';
+import Assistant from './Assistant.jsx';
+import {
+  BulbaLogo, IconHome, IconSliders, IconSparkles, IconCalendar, IconClock,
+  IconSearch, IconMenu, IconClose, IconSun, IconMoon, IconLogout
+} from './Icons.jsx';
+
+const NAV = [
+  { to: '/', label: 'Dashboard', icon: IconHome, end: true },
+  { to: '/setup', label: 'Setup', icon: IconSliders },
+  { to: '/generate', label: 'Generate', icon: IconSparkles },
+  { to: '/timetable', label: 'Timetable', icon: IconCalendar },
+  { to: '/today', label: 'Today', icon: IconClock }
+];
+
+const TICKER = [
+  '🌱 gotta schedule ’em all',
+  'no cap',
+  'it’s super effective!',
+  'we checked twice ✓',
+  'a wild timetable appeared',
+  'zero clashes, zero stress',
+  'critical hit: 0 conflicts ⚡',
+  'your timetable but it goes hard',
+  'it’s giving organized ✨',
+  'rooms locked, chai brewed ☕',
+  'gym? lab? sorted.',
+  'vibe check: passed ✅',
+  'level up your sem 📈'
+];
 
 function usePaletteData(enabled) {
   return useQuery({
@@ -86,6 +115,8 @@ export default function Layout() {
 
   return (
     <div className="app-shell">
+      <div className="app-scene" aria-hidden="true" />
+      <div className="app-grain" aria-hidden="true" />
       <div className="app-glow" aria-hidden="true" />
       <div className="container">
         <nav className="nav glass" aria-label="Primary">
@@ -96,35 +127,27 @@ export default function Layout() {
             aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             onClick={() => setMenuOpen((v) => !v)}
           >
-            {menuOpen ? '✕' : '☰'}
+            {menuOpen ? <IconClose size={18} /> : <IconMenu size={18} />}
           </button>
-          <NavLink to="/" className="nav-brand" onClick={() => setMenuOpen(false)}>
-            Slot<span>Sync</span>
+          <NavLink to="/" className="nav-brand" onClick={() => setMenuOpen(false)} aria-label="SlotSync home">
+            <BulbaLogo size={30} />
           </NavLink>
           <div className="nav-links">
-            <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
-              Dashboard
-            </NavLink>
-            <NavLink to="/setup" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Setup
-            </NavLink>
-            <NavLink to="/generate" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Generate
-            </NavLink>
-            <NavLink to="/timetable" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Timetable
-            </NavLink>
-            <NavLink to="/today" className={({ isActive }) => (isActive ? 'active' : '')}>
-              Today
-            </NavLink>
+            {NAV.map(({ to, label, icon: Icon, end }) => (
+              <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')}>
+                <Icon size={16} />
+                <span>{label}</span>
+              </NavLink>
+            ))}
           </div>
           <div className="nav-right">
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(true)} title="Jump to batch / teacher / room (Ctrl+K)">
-              ⌘K
+              <IconSearch size={16} />
+              <span className="theme-label">Ctrl K</span>
             </button>
             <button type="button" className="btn btn-ghost btn-sm theme-toggle" onClick={toggle} title="Toggle theme">
-              <span aria-hidden="true">{theme === 'dark' ? '☀️' : '🌙'}</span>
-              <span className="theme-label">{theme === 'dark' ? ' Light' : ' Dark'}</span>
+              {theme === 'dark' ? <IconSun size={16} /> : <IconMoon size={16} />}
+              <span className="theme-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
             </button>
             {user ? (
               <>
@@ -136,7 +159,8 @@ export default function Layout() {
                   className="btn btn-ghost btn-sm"
                   onClick={handleLogout}
                 >
-                  Logout
+                  <IconLogout size={16} />
+                  <span className="theme-label">Logout</span>
                 </button>
               </>
             ) : (
@@ -147,23 +171,15 @@ export default function Layout() {
           </div>
           {menuOpen && (
             <div className="nav-mobile-menu" role="menu" aria-label="Mobile navigation">
-              <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
-                Dashboard
-              </NavLink>
-              <NavLink to="/setup" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
-                Setup
-              </NavLink>
-              <NavLink to="/generate" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
-                Generate
-              </NavLink>
-              <NavLink to="/timetable" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
-                Timetable
-              </NavLink>
-              <NavLink to="/today" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
-                Today
-              </NavLink>
+              {NAV.map(({ to, label, icon: Icon, end }) => (
+                <NavLink key={to} to={to} end={end} className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
+                  <Icon size={18} />
+                  <span>{label}</span>
+                </NavLink>
+              ))}
               {user ? (
                 <button type="button" className="btn btn-ghost btn-sm" onClick={handleLogout}>
+                  <IconLogout size={18} />
                   Logout ({user.name || user.email})
                 </button>
               ) : (
@@ -174,11 +190,20 @@ export default function Layout() {
             </div>
           )}
         </nav>
+        <div className="ticker" aria-hidden="true">
+          <div className="ticker-track">
+            {[...TICKER, ...TICKER].map((t, i) => (
+              <span key={i}>{i % 3 === 0 ? <b>{t}</b> : t}</span>
+            ))}
+          </div>
+        </div>
       </div>
 
       <main className="container">
         <Outlet />
       </main>
+
+      {user && <Assistant />}
 
       {open && (
         <div className="palette-backdrop" onClick={() => setOpen(false)}>

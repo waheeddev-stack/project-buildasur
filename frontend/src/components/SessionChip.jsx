@@ -1,4 +1,4 @@
-const DOT_COLORS = ['#8b5cf6', '#ec4899', '#34d399', '#fbbf24', '#60a5fa', '#f97316', '#a3e635'];
+const DOT_COLORS = ['#22c55e', '#0d9488', '#3b82f6', '#f59e0b', '#8b5cf6', '#f43f5e', '#84cc16'];
 
 export function dotFor(key) {
   if (!key) return DOT_COLORS[0];

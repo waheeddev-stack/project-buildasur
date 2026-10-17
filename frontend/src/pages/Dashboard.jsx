@@ -36,16 +36,19 @@ export default function Dashboard() {
 
   return (
     <div className="stack">
-      <div className="spread page-head">
-        <div>
-          <h1 className="page-title">Good morning, scheduler ☕</h1>
+      <div className="glass card hero-band">
+        <div className="hero-copy">
+          <h1 className="page-title">Good morning, <span className="gtext">scheduler</span> 🌱</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Three numbers, one button. No clashes. We checked twice.
+            Three numbers, one button, zero chaos. No clashes — no cap, we checked twice.
           </p>
+          <Link to="/generate" className="btn btn-gradient cta" style={{ marginTop: 12 }}>
+            ✨ Generate timetable
+          </Link>
         </div>
-        <Link to="/generate" className="btn btn-gradient cta">
-          ✨ Generate timetable
-        </Link>
+        <div className="hero-art">
+          <img className="hero-img" src="/bulbasaur.jpeg" alt="Bulbasaur, ready to build a clash-free timetable" />
+        </div>
       </div>
 
       {down ? (
@@ -60,9 +63,9 @@ export default function Dashboard() {
       ) : (
         <>
           <div className="tiles">
-            <StatTile label="Teachers" value={teachers.isError ? '—' : countOf(teachers.data)} hint="across departments" loading={teachers.isLoading} />
-            <StatTile label="Rooms" value={rooms.isError ? '—' : countOf(rooms.data)} hint="labs + halls" loading={rooms.isLoading} />
-            <StatTile label="Batches" value={batches.isError ? '—' : countOf(batches.data)} hint="and sub-batches" loading={batches.isLoading} />
+            <StatTile sticker="🧑‍🏫" label="Teachers" value={teachers.isError ? '—' : countOf(teachers.data)} hint="across departments" loading={teachers.isLoading} />
+            <StatTile sticker="🏫" label="Rooms" value={rooms.isError ? '—' : countOf(rooms.data)} hint="labs + halls" loading={rooms.isLoading} />
+            <StatTile sticker="🎓" label="Batches" value={batches.isError ? '—' : countOf(batches.data)} hint="and sub-batches" loading={batches.isLoading} />
           </div>
           {anyError && !down && (
             <div className="error-box">Some stats failed to load — the rest still works. Check the backend logs.</div>
@@ -83,7 +86,7 @@ export default function Dashboard() {
               </p>
             ) : (
               <p className="muted" style={{ margin: 0 }}>
-                Nothing generated yet. Hit Setup, add your people and rooms, then Generate.
+                No timetable yet. A wild timetable is waiting to appear — do Setup, then Generate. 🌱
               </p>
             )}
           </div>

@@ -4,6 +4,7 @@ Clash-Free College Timetable Generator — Node.js + Express REST API.
 
 - **SQLite (default):** `data/slotsync.sqlite` via built-in `node:sqlite`, zero-config. Old `data/db.json` auto-migrates on first boot.
 - **MySQL (local):** MySQL 9.x, same API — switch with `DB_DIALECT=mysql`. Tables `records` + `meta` auto-created.
+- **TiDB Cloud:** managed, MySQL-compatible — provision with `npm run tidb:setup` (see below).
 - `prisma/schema.prisma` documents the relational schema for reference.
 
 ## Run — SQLite (default)
@@ -37,6 +38,23 @@ $env:DB_DIALECT="mysql"
 npm start
 npm run db:health
 ```
+
+## Provision — TiDB Cloud
+
+```powershell
+# .env (from TiDB Cloud console → Connect → MySQL client):
+# TIDB_HOST=gateway01.<region>.prod.aws.tidbcloud.com
+# TIDB_PORT=4000
+# TIDB_USER=<prefix>.root
+# TIDB_PASSWORD=<password>
+# TIDB_DATABASE=slotsync
+
+npm run tidb:setup
+```
+
+Creates the database + `records`/`meta` tables over TLS and loads the demo rows.
+Re-running replaces the rows. To run the API against TiDB Cloud, set
+`DB_DIALECT=mysql` and copy the `TIDB_*` values into the matching `MYSQL_*` vars.
 
 - `npm run dev` — auto-reload (`node --watch`)
 - `npm run seed` — reseed demo data (or `POST /api/seed` as admin)

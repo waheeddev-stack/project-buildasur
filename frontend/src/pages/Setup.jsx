@@ -8,6 +8,13 @@ const STEPS = ['Time Grid', 'Teachers', 'Rooms', 'Subjects + Batches', 'Assignme
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const FALLBACK_PERIODS = [1, 2, 3, 4, 5, 6];
+const LUNCH_PERIOD = 5; // 13:00-14:00 on every working day
+
+// Hourly slots from 09:00, with a fixed 1-2 PM lunch break at period 5.
+function buildTimings(n) {
+  const hours = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00'];
+  return Array.from({ length: n }, (_, i) => ({ period: i + 1, start: hours[i] || '', end: hours[i + 1] || '' }));
+}
 
 const emptyTeacher = { name: '', department: '', maxHoursDay: 6, maxHoursWeek: 24 };
 const emptyRoom = { name: '', capacity: 60, type: 'lecture' };
@@ -49,7 +56,7 @@ export default function Setup() {
     });
 
   // Time grid
-  const gridMut = useSave((body) => apiPost('/api/time-grid', body), ['time-grid']);
+  const gridMut = useSave((body) => apiPut('/api/time-grid', body), ['time-grid']);
 
   // Teachers
   const teacherCreate = useSave((b) => apiPost('/api/teachers', b), ['teachers']);
@@ -81,7 +88,7 @@ export default function Setup() {
   });
 
   // Time grid form
-  const [gridForm, setGridForm] = useState({ days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], periodsPerDay: 8 });
+  const [gridForm, setGridForm] = useState({ days: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'], periodsPerDay: 7 });
   const [teacherForm, setTeacherForm] = useState(emptyTeacher);
   const [teacherEditId, setTeacherEditId] = useState(null);
   const [roomForm, setRoomForm] = useState(emptyRoom);
@@ -254,8 +261,11 @@ export default function Setup() {
                 onChange={(e) => setGridForm((f) => ({ ...f, periodsPerDay: Number(e.target.value) }))} />
             </label>
           </div>
+          {gridForm.periodsPerDay >= LUNCH_PERIOD && (
+            <p className="microcopy" style={{ margin: 0 }}>🍽️ Period {LUNCH_PERIOD} (13:00–14:00) is reserved as a <strong>lunch break on every day</strong>.</p>
+          )}
           {grid.data?.data ? <p className="microcopy wrap-anywhere">Current grid: {JSON.stringify(grid.data.data).slice(0, 160)}</p> : <p className="microcopy">No grid saved yet — pick days + periods and save.</p>}
-          <div><button type="button" className="btn btn-gradient" disabled={gridMut.isPending || !canWrite} onClick={() => gridMut.mutate({ days: gridForm.days, periodsPerDay: gridForm.periodsPerDay, periods: gridForm.periodsPerDay })}>Save time grid</button></div>
+          <div><button type="button" className="btn btn-gradient" disabled={gridMut.isPending || !canWrite} onClick={() => gridMut.mutate({ days: gridForm.days, periodsPerDay: gridForm.periodsPerDay, timings: buildTimings(gridForm.periodsPerDay), breaks: gridForm.periodsPerDay >= LUNCH_PERIOD ? [LUNCH_PERIOD] : [] })}>Save time grid</button></div>
         </div>
       )}
 

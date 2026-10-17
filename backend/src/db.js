@@ -7,6 +7,8 @@
 //   DB_DIALECT=sqlite|mysql (default sqlite)
 //   SQLITE_FILE=./data/slotsync.sqlite
 //   MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DATABASE
+//   MYSQL_SSL=require|disable, MYSQL_CA=/path/ca.pem   (TiDB Cloud needs TLS)
+// For TiDB Cloud: MYSQL_HOST=gateway01.<region>.prod.aws.tidbcloud.com, MYSQL_PORT=4000
 try { require('dotenv').config(); } catch (e) {}
 const fs = require('fs');
 const path = require('path');
@@ -94,8 +96,24 @@ function sqliteSave(data) {
 }
 
 // ---------- MySQL (mysql2/promise, async) ----------
+// TLS options for managed MySQL providers (TiDB Cloud requires TLS).
+//   MYSQL_SSL=disable            -> plaintext
+//   MYSQL_CA=/path/ca.pem        -> verify against the provider CA
+//   MYSQL_SSL_VERIFY=true        -> verify the chain with the system store
+// Default: TLS on, chain not verified (fine for TiDB Cloud's public gateway).
+function mysqlSsl() {
+  const mode = String(process.env.MYSQL_SSL || '').toLowerCase();
+  if (mode === 'disable' || mode === 'false' || mode === 'off') return undefined;
+  const caFile = process.env.MYSQL_CA;
+  if (caFile) {
+    try { return { ca: fs.readFileSync(caFile), minVersion: 'TLSv1.2', rejectUnauthorized: true }; }
+    catch (e) { console.error(`Could not read MYSQL_CA (${caFile}): ${e.message}`); }
+  }
+  return { minVersion: 'TLSv1.2', rejectUnauthorized: String(process.env.MYSQL_SSL_VERIFY || '').toLowerCase() === 'true' };
+}
+
 function mysqlConfig() {
-  return {
+  const cfg = {
     host: process.env.MYSQL_HOST || 'localhost',
     port: Number(process.env.MYSQL_PORT || 3306),
     user: process.env.MYSQL_USER || 'root',
@@ -103,6 +121,9 @@ function mysqlConfig() {
     database: process.env.MYSQL_DATABASE || 'slotsync',
     waitForConnections: true, connectionLimit: 5,
   };
+  const ssl = mysqlSsl();
+  if (ssl) cfg.ssl = ssl;
+  return cfg;
 }
 
 async function mysqlPoolGet() {

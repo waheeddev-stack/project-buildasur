@@ -50,6 +50,19 @@ export default function Grid() {
 
   const { sessions, meta } = useMemo(() => normalizeTimetable(timetableQuery.data), [timetableQuery.data]);
 
+  // Time grid drives which day/period columns render, including break columns.
+  const gridQuery = useQuery({ queryKey: ['time-grid'], queryFn: () => apiGet('/api/time-grid').catch(() => null) });
+  const gridInfo = useMemo(() => {
+    const g = gridQuery.data?.data || null;
+    const slots = gridQuery.data?.slots || [];
+    const breakPeriods = new Set(slots.filter((s) => s.is_break).map((s) => s.period));
+    const timingByPeriod = {};
+    for (const s of slots) if (!(s.period in timingByPeriod)) timingByPeriod[s.period] = { start: s.start_time, end: s.end_time };
+    const periods = g?.timings?.length ? g.timings.map((t) => t.period) : [...new Set(slots.map((s) => s.period))];
+    const days = g?.days || [...new Set(slots.map((s) => s.day))];
+    return { breakPeriods, timingByPeriod, periods, days };
+  }, [gridQuery.data]);
+
   const bySlot = useMemo(() => {
     const m = new Map();
     for (const s of sessions) {
@@ -202,6 +215,8 @@ export default function Grid() {
   }
 
   const shareUrl = `${window.location.origin}/timetable/${meta?.id || id || ''}`;
+  const tableDays = gridInfo.days.length ? gridInfo.days : slotsInUse.days;
+  const tablePeriods = gridInfo.periods.length ? gridInfo.periods : slotsInUse.periods;
 
   return (
     <div className="stack">
@@ -240,15 +255,31 @@ export default function Grid() {
             <thead>
               <tr>
                 <th>Day</th>
-                {slotsInUse.periods.map((p) => <th key={p}>P{p}</th>)}
+                {tablePeriods.map((p) => {
+                  const isBreak = gridInfo.breakPeriods.has(p);
+                  const t = gridInfo.timingByPeriod[p];
+                  return (
+                    <th key={p} className={isBreak ? 'tt-break-head' : ''}>
+                      {isBreak ? '🍽️ Lunch' : `P${p}`}
+                      {t?.start && <span className="tt-time">{t.start}–{t.end}</span>}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {slotsInUse.days.map((day) => (
+              {tableDays.map((day) => (
                 <tr key={day}>
                   <th scope="row">{day}</th>
-                  {slotsInUse.periods.map((period) => {
+                  {tablePeriods.map((period) => {
                     const key = `${day}|${period}`;
+                    if (gridInfo.breakPeriods.has(period)) {
+                      return (
+                        <td key={key}>
+                          <div className="tt-cell tt-break" aria-label={`${day} lunch break`}>Lunch break</div>
+                        </td>
+                      );
+                    }
                     const cell = bySlot.get(key) || [];
                     const valid = dragOver === key;
                     return (

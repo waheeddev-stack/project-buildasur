@@ -475,6 +475,27 @@ TLS is on by default; drop your TiDB CA into `MYSQL_CA` for full verification.
 
 ---
 
+## Deployment (Render + Vercel)
+
+The API runs on Render and the SPA on Vercel. They are different sites, so:
+
+**Backend (Render)** — set these environment variables:
+| Variable | Value |
+| --- | --- |
+| `FRONTEND_URL` | Your Vercel URL, e.g. `https://your-app.vercel.app` (comma-separate to allow several; `*.vercel.app` previews are allowed automatically) |
+| `JWT_SECRET` | A long random string — **do not** ship the default |
+| `NODE_ENV` | `production` |
+
+CORS reflects the allowed origin and the refresh cookie is set `SameSite=None; Secure`
+in production so it survives the cross-site hop.
+
+**Frontend (Vercel)** — the committed `frontend/.env.production` points the build at
+`https://nexadmincontrol.onrender.com`. To change the API host, edit that file or set a
+`VITE_API_URL` env var in the Vercel project and redeploy. `frontend/vercel.json` rewrites
+all paths to `index.html` for client-side routing.
+
+---
+
 ## Testing and verification
 
 - `npm run build --prefix frontend` — production build gate.

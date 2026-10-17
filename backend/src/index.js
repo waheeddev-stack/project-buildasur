@@ -21,7 +21,22 @@ const availabilityRoutes = require('./routes/availability');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+// CORS: allow the configured frontend origin(s) — comma-separated in FRONTEND_URL —
+// plus Vercel preview/production domains. Credentials on so the refresh cookie flows.
+const allowedOrigins = String(process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',')
+  .map((s) => s.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true); // curl / same-origin / server-to-server
+    const ok = allowedOrigins.includes('*')
+      || allowedOrigins.includes(origin)
+      || /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
+    return cb(null, ok);
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(morgan('dev'));

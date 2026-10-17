@@ -32,18 +32,25 @@ function signRefresh(user) {
   return token;
 }
 
-function setRefreshCookie(res, token) {
-  res.cookie(COOKIE_NAME, token, {
+// Cross-site (e.g. Vercel frontend → Render backend) needs SameSite=None + Secure;
+// over plain http://localhost those would be dropped, so fall back to Lax in dev.
+function cookieBase() {
+  // Treat https frontends (and NODE_ENV=production) as cross-site/secure.
+  const prod = process.env.NODE_ENV === 'production' || /^https:/i.test(process.env.FRONTEND_URL || '');
+  return {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: REFRESH_TTL_MS,
+    sameSite: prod ? 'none' : 'lax',
+    secure: prod,
     path: '/',
-  });
+  };
+}
+
+function setRefreshCookie(res, token) {
+  res.cookie(COOKIE_NAME, token, { ...cookieBase(), maxAge: REFRESH_TTL_MS });
 }
 
 function clearRefreshCookie(res) {
-  res.clearCookie(COOKIE_NAME, { path: '/' });
+  res.clearCookie(COOKIE_NAME, cookieBase());
 }
 
 function revokeRefresh(token) {

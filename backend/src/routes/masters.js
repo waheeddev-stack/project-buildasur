@@ -7,7 +7,8 @@ const { validate } = require('../validate');
 const { requireAuth, requireRole, deptOk } = require('../auth');
 
 const router = express.Router();
-router.use(requireAuth);
+// NOTE: requireAuth is applied per-route (not router.use) so this router mounted
+// at /api does not block unrelated public routes such as /api/timetables.
 
 const schemas = {
   teachers: {
@@ -76,7 +77,7 @@ function checkRefs(col, body) {
 for (const col of Object.keys(schemas)) {
   const base = `/${col}`;
 
-  router.get(base, (req, res) => {
+  router.get(base, requireAuth, (req, res) => {
     let rows = db.all(col);
     if (req.user.role === 'hod' && col === 'teachers' && req.user.department_id) {
       rows = rows.filter((t) => t.department_id === req.user.department_id);
@@ -84,13 +85,13 @@ for (const col of Object.keys(schemas)) {
     res.json({ data: rows });
   });
 
-  router.get(`${base}/:id`, (req, res) => {
+  router.get(`${base}/:id`, requireAuth, (req, res) => {
     const row = db.findById(col, req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found.', fix: 'It may have been deleted.' });
     res.json({ data: row });
   });
 
-  router.post(base, requireRole(...writerRoles(col)), validate(schemas[col].create), (req, res) => {
+  router.post(base, requireAuth, requireRole(...writerRoles(col)), validate(schemas[col].create), (req, res) => {
     const scope = scopeDept(req, col, req.body);
     if (scope === 'hod-scope') return res.status(403).json({ error: 'HODs can only manage their own department.', fix: 'Pick a teacher in your department.' });
     if (scope === 'admin-only') return res.status(403).json({ error: 'Only admins manage this.', fix: 'Ask an admin to make the change.' });
@@ -121,10 +122,10 @@ for (const col of Object.keys(schemas)) {
     db.addAudit({ actor_user_id: req.user.id, action: `update:${col}`, target_type: col, target_id: row.id, before: cur, after: row });
     res.json({ data: row });
   };
-  router.put(`${base}/:id`, requireRole(...writerRoles(col)), validate(schemas[col].update), upd);
-  router.patch(`${base}/:id`, requireRole(...writerRoles(col)), validate(schemas[col].update), upd);
+  router.put(`${base}/:id`, requireAuth, requireRole(...writerRoles(col)), validate(schemas[col].update), upd);
+  router.patch(`${base}/:id`, requireAuth, requireRole(...writerRoles(col)), validate(schemas[col].update), upd);
 
-  router.delete(`${base}/:id`, requireRole(...writerRoles(col)), (req, res) => {
+  router.delete(`${base}/:id`, requireAuth, requireRole(...writerRoles(col)), (req, res) => {
     const cur = db.findById(col, req.params.id);
     if (!cur) return res.status(404).json({ error: 'Not found.', fix: 'It may have been deleted.' });
     if (col === 'teachers' && req.user.role === 'hod' && !deptOk(req, cur.department_id)) {

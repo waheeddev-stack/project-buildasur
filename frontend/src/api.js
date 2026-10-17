@@ -70,7 +70,8 @@ export async function api(path, options = {}, retry = true) {
       const r = await rawFetch('/api/auth/refresh', { method: 'POST' });
       if (r.ok) {
         const data = await parseBody(r);
-        if (data && data.accessToken) setAccessToken(data.accessToken);
+        const fresh = data && (data.accessToken || data.token);
+        if (fresh) setAccessToken(fresh);
         return api(path, options, false);
       }
     } catch {

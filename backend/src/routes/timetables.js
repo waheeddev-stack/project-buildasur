@@ -4,11 +4,13 @@ const express = require('express');
 const { z } = require('zod');
 const db = require('../db');
 const { validate } = require('../validate');
-const { requireAuth, requireRole } = require('../auth');
+const { requireAuth, optionalAuth, requireRole } = require('../auth');
 const { generateTimetableAsync } = require('../solver');
 
 const router = express.Router();
-router.use(requireAuth);
+// Public read-only routes (published timetables) resolve an optional user;
+// every write/private route below adds requireAuth explicitly.
+router.use(optionalAuth);
 
 function slotLabel(slot) {
   if (!slot) return 'that slot';
@@ -87,7 +89,7 @@ function suggestSlots(timetableId, assignmentId, teacherId, batchId, roomId, n =
 }
 
 // ---- Generate (async job) ----
-router.post('/timetables/generate', requireRole('admin', 'hod'), (req, res) => {
+router.post('/timetables/generate', requireAuth, requireRole('admin', 'hod'), (req, res) => {
   const term = (req.body && req.body.term) || '2026-odd';
   const d = db.read();
   const job = db.insert('jobs', { status: 'queued', progress: 0, resultTimetableId: null, error: null, infeasibilityReport: null, term });
@@ -127,14 +129,33 @@ router.post('/timetables/generate', requireRole('admin', 'hod'), (req, res) => {
 });
 
 // ---- List / get ----
+// Anonymous callers only ever see published timetables (PRD V5 share links).
 router.get('/timetables', (req, res) => {
-  res.json({ data: db.all('timetables') });
+  let rows = db.all('timetables');
+  if (!req.user) rows = rows.filter((t) => t.status === 'published');
+  const byNewest = (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''));
+  if (req.query.limit) {
+    const n = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 1));
+    return res.json({ data: rows.slice().sort(byNewest).slice(0, n) });
+  }
+  res.json({ data: rows });
+});
+
+// Newest timetable (convenience for Dashboard/Grid/Today).
+router.get('/timetables/latest', (req, res) => {
+  let rows = db.all('timetables');
+  if (!req.user) rows = rows.filter((t) => t.status === 'published');
+  const newest = rows.slice().sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0] || null;
+  res.json({ data: newest });
 });
 
 router.get('/timetables/:id', (req, res) => {
   const tt = db.findById('timetables', req.params.id);
   if (!tt) return res.status(404).json({ error: 'Timetable not found.', fix: 'Generate a new one.' });
-  if (req.user.role === 'student' && tt.status !== 'published') {
+  if (!req.user && tt.status !== 'published') {
+    return res.status(401).json({ error: 'This timetable is not published yet.', fix: 'Log in, or ask your coordinator to publish it.' });
+  }
+  if (req.user && req.user.role === 'student' && tt.status !== 'published') {
     return res.status(403).json({ error: 'This timetable is not published yet.', fix: 'Ask your coordinator to publish it.' });
   }
   let sessions = db.find('sessions', (s) => s.timetable_id === tt.id);
@@ -144,10 +165,10 @@ router.get('/timetables/:id', (req, res) => {
     else if (view === 'teacher') sessions = sessions.filter((s) => s.teacher_id === filter);
     else if (view === 'room') sessions = sessions.filter((s) => s.room_id === filter);
   }
-  if (req.user.role === 'teacher' && req.user.teacher_id) {
+  if (req.user && req.user.role === 'teacher' && req.user.teacher_id) {
     sessions = sessions.filter((s) => s.teacher_id === req.user.teacher_id);
   }
-  if (req.user.role === 'student' && req.user.batch_id && !filter) {
+  if (req.user && req.user.role === 'student' && req.user.batch_id && !filter) {
     sessions = sessions.filter((s) => s.batch_id === req.user.batch_id);
   }
   const enrich = (s) => {
@@ -165,13 +186,28 @@ router.get('/timetables/:id', (req, res) => {
 });
 
 // ---- Move session (validated) ----
-const moveSchema = z.object({ slot_id: z.string().min(1).optional(), room_id: z.string().min(1).optional() }).refine((v) => v.slot_id || v.room_id, { message: 'Give a new slot_id and/or room_id.' });
+const moveSchema = z
+  .object({
+    slot_id: z.string().min(1).optional(),
+    room_id: z.string().min(1).optional(),
+    day: z.string().min(1).optional(),
+    period: z.union([z.number().int(), z.string()]).optional(),
+  })
+  .refine((v) => v.slot_id || v.room_id || (v.day && v.period != null), {
+    message: 'Give a target slot_id (or day + period), and/or a room_id.',
+  });
 
-router.patch('/sessions/:id', requireRole('admin', 'hod'), validate(moveSchema), (req, res) => {
+router.patch('/sessions/:id', requireAuth, requireRole('admin', 'hod'), validate(moveSchema), (req, res) => {
   const s = db.findById('sessions', req.params.id);
   if (!s) return res.status(404).json({ error: 'Session not found.', fix: 'Refresh the grid and try again.' });
   if (s.is_locked) return res.status(409).json({ error: 'This session is locked and cannot move.', fix: 'Unlock it first, then move.', suggestions: [] });
-  const slotId = req.body.slot_id || s.slot_id;
+  // Resolve a target slot from day + period when the client sends grid coordinates.
+  let resolvedSlotId = req.body.slot_id || null;
+  if (!resolvedSlotId && req.body.day && req.body.period != null) {
+    const match = db.find('time_slots', (x) => x.day === req.body.day && String(x.period) === String(req.body.period))[0];
+    if (match) resolvedSlotId = match.id;
+  }
+  const slotId = resolvedSlotId || s.slot_id;
   const roomId = req.body.room_id || s.room_id;
   const err = validatePlacement(s.timetable_id, slotId, s.teacher_id, roomId, s.batch_id, s.assignment_id, s.id);
   if (err) {
@@ -239,6 +275,9 @@ router.post('/timetables/:id/lock-sessions', requireRole('admin', 'hod'), valida
 router.get('/timetables/:id/export', (req, res) => {
   const tt = db.findById('timetables', req.params.id);
   if (!tt) return res.status(404).json({ error: 'Timetable not found.', fix: 'Generate a new one.' });
+  if (!req.user && tt.status !== 'published') {
+    return res.status(401).json({ error: 'This timetable is not published yet.', fix: 'Log in, or ask your coordinator to publish it.' });
+  }
   const format = String(req.query.format || 'csv').toLowerCase();
   if (format === 'pdf') {
     return res.status(501).json({ error: 'PDF export is not in v1. Use CSV or ICS.', fix: 'Export as CSV, then print to PDF from your spreadsheet.' });

@@ -29,7 +29,7 @@ export default function Generate() {
         if (stop) return;
         setJob(data?.job || data);
         const status = data?.job?.status || data?.status;
-        if (status === 'completed' || status === 'failed') return; // done polling
+        if (status === 'done' || status === 'completed' || status === 'failed') return; // done polling
         timer = setTimeout(poll, 1500);
       } catch (e) {
         if (stop) return;
@@ -60,17 +60,22 @@ export default function Generate() {
     }
   };
 
-  const status = job?.status || (jobId ? 'running' : 'idle');
-  const progress = Math.max(0, Math.min(100, job?.progress ?? (jobId ? 8 : 0)));
+  const rawStatus = job?.status || (jobId ? 'running' : 'idle');
+  const isDone = rawStatus === 'done' || rawStatus === 'completed';
+  const isFailed = rawStatus === 'failed';
+  const status = isDone ? 'completed' : isFailed ? 'failed' : rawStatus;
+  const rawProgress = job?.progress;
+  const progress = Math.max(0, Math.min(100, rawProgress == null ? (jobId ? 8 : 0) : rawProgress <= 1 ? rawProgress * 100 : rawProgress));
   const doneCount = Math.round((progress / 100) * CHECKS.length);
-  const conflicts = job?.conflicts ?? job?.result?.conflicts ?? null;
-  const score = job?.score ?? job?.result?.score ?? null;
-  const timetableId = job?.timetableId || job?.result?.timetableId || job?.timetable?.id || null;
-  const zeroClash = status === 'completed' && (conflicts === 0 || conflicts == null);
+  const conflicts = isDone ? 0 : job?.conflicts ?? null;
+  const score = job?.score ?? null;
+  const timetableId = job?.resultTimetableId || job?.timetableId || job?.result?.timetableId || job?.timetable?.id || null;
+  const infeasibility = job?.infeasibilityReport || job?.infeasibility || null;
+  const zeroClash = isDone && (conflicts === 0 || conflicts == null);
 
   return (
     <div className="stack">
-      <h1 style={{ margin: '4px 0' }}>Generate</h1>
+      <h1 className="page-title">Generate</h1>
       <p className="muted" style={{ margin: 0 }}>One big button. Zero hard conflicts, or a report that tells you exactly why.</p>
 
       <div className="glass card state">
@@ -80,8 +85,8 @@ export default function Generate() {
         </label>
         <div className="mt">
           <motion.button
-            className="btn btn-gradient"
-            style={{ fontSize: 18, padding: '14px 36px' }}
+            type="button"
+            className="btn btn-gradient btn-generate"
             onClick={start}
             disabled={starting}
             whileTap={{ scale: 0.97 }}
@@ -115,22 +120,35 @@ export default function Generate() {
                 {score != null && <span className="muted"> Soft score: {score}.</span>}
               </p>
               {timetableId ? (
-                <Link to={`/timetable/${timetableId}`} className="btn btn-gradient" style={{ textDecoration: 'none' }}>
+                <Link to={`/timetable/${timetableId}`} className="btn btn-gradient">
                   Open the grid →
                 </Link>
               ) : (
                 <p className="microcopy">Solver finished but gave no timetable id — check the job payload below.</p>
               )}
-              {job?.infeasibility && (
+              {infeasibility && (
                 <div className="error-box mt" style={{ textAlign: 'left' }}>
                   <strong>What blocks a solution:</strong>
-                  <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(job.infeasibility, null, 2)}</pre>
+                  <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(infeasibility, null, 2)}</pre>
                 </div>
               )}
             </div>
           )}
           {status === 'failed' && (
-            <div className="error-box">Generation failed: {job?.error || job?.message || 'unknown error'}. Fix the inputs and try again?</div>
+            <div className="error-box" style={{ textAlign: 'left' }}>
+              <strong>Could not build a clash-free timetable.</strong>
+              <p style={{ margin: '6px 0' }}>{job?.error || job?.message || 'Unknown error.'}</p>
+              {Array.isArray(infeasibility?.topFixes) && infeasibility.topFixes.length > 0 && (
+                <>
+                  <span className="microcopy">Top fixes:</span>
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+                    {infeasibility.topFixes.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
           )}
         </div>
       )}

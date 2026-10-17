@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
@@ -39,9 +39,14 @@ class ErrorBoundary extends React.Component {
             <div className="empty-illus">🧊</div>
             <h3>Something melted down.</h3>
             <p className="muted">{String(this.state.error?.message || this.state.error)}</p>
-            <button className="btn btn-gradient" onClick={() => this.setState({ error: null })}>
-              Try that again
-            </button>
+            <div className="row" style={{ justifyContent: 'center' }}>
+              <button type="button" className="btn btn-gradient" onClick={() => this.setState({ error: null })}>
+                Try that again
+              </button>
+              <a className="btn btn-ghost" href="/" onClick={(e) => { e.preventDefault(); window.location.assign('/'); }}>
+                Go home
+              </a>
+            </div>
           </div>
         </div>
       );
@@ -50,10 +55,26 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [pathname]);
+  return null;
+}
+
 function RequireAuth({ children }) {
   const user = useAuth((s) => s.user);
   const token = useAuth((s) => s.accessToken);
-  if (!user && !token) return <Navigate to="/login" replace />;
+  const location = useLocation();
+  if (!user && !token) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  return children;
+}
+
+function RedirectIfAuthed({ children }) {
+  const user = useAuth((s) => s.user);
+  const token = useAuth((s) => s.accessToken);
+  if (user || token) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -61,9 +82,17 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <ScrollToTop />
         <ErrorBoundary>
           <Routes>
-            <Route path="/login" element={<Login />} />
+            <Route
+              path="/login"
+              element={
+                <RedirectIfAuthed>
+                  <Login />
+                </RedirectIfAuthed>
+              }
+            />
             <Route element={<Layout />}>
               <Route
                 path="/"

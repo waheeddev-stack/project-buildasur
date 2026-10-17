@@ -9,14 +9,19 @@ export function dotFor(key) {
 
 // Draggable session chip: HTML5 draggable + click-to-move fallback (keyboard accessible).
 export default function SessionChip({ session, selected, onDragStart, onSelect }) {
-  const subject = session.subjectName || session.subject?.name || session.subjectCode || 'Session';
-  const meta = [session.teacherName || session.teacher?.name, session.roomName || session.room?.name]
+  const locked = session.isLocked || session.is_locked;
+  const subject = session.subjectName || session.subject_name || session.subject?.name || session.subjectCode || session.subject?.code || 'Session';
+  const batch = session.batchName || session.batch_name || session.batch?.name || '';
+  const meta = [
+    session.teacherName || session.teacher_name || session.teacher?.name,
+    session.roomName || session.room_name || session.room?.name
+  ]
     .filter(Boolean)
     .join(' · ');
   return (
     <div
-      className={`chip${session.isLocked ? ' locked' : ''}${selected ? ' selected' : ''}`}
-      draggable={!session.isLocked}
+      className={`chip${locked ? ' locked' : ''}${selected ? ' selected' : ''}`}
+      draggable={!locked}
       onDragStart={(e) => onDragStart && onDragStart(e, session)}
       onClick={() => onSelect && onSelect(session)}
       onKeyDown={(e) => {
@@ -27,15 +32,15 @@ export default function SessionChip({ session, selected, onDragStart, onSelect }
       }}
       tabIndex={0}
       role="button"
-      aria-label={`${subject}${meta ? `, ${meta}` : ''}${session.isLocked ? ', locked' : ''}. Press Enter to select, then choose a slot.`}
-      title={session.isLocked ? 'Locked — unlock to move' : 'Drag me, or click then click a slot'}
+      aria-label={`${subject}${meta ? `, ${meta}` : ''}${locked ? ', locked' : ''}. Press Enter to select, then choose a slot.`}
+      title={locked ? 'Locked — unlock to move' : 'Drag me, or click then click a slot'}
     >
       <span className="dot" style={{ background: dotFor(subject) }} aria-hidden="true" />
       <span>
         <strong>{subject}</strong>
-        {session.batchName && <div className="microcopy">{session.batchName}</div>}
+        {batch && <div className="microcopy">{batch}</div>}
         {meta && <div className="microcopy">{meta}</div>}
-        {session.isLocked && <div className="microcopy">🔒 locked</div>}
+        {locked && <div className="microcopy">🔒 locked</div>}
       </span>
     </div>
   );

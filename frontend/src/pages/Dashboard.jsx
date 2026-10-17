@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, backendDown } from '../api.js';
 import StatTile from '../components/StatTile.jsx';
 
@@ -12,6 +12,7 @@ const countOf = (v) => {
 };
 
 export default function Dashboard() {
+  const qc = useQueryClient();
   const teachers = useQuery({ queryKey: ['teachers-count'], queryFn: () => apiGet('/api/teachers') });
   const rooms = useQuery({ queryKey: ['rooms-count'], queryFn: () => apiGet('/api/rooms') });
   const batches = useQuery({ queryKey: ['batches-count'], queryFn: () => apiGet('/api/batches') });
@@ -26,16 +27,23 @@ export default function Dashboard() {
   const latestId = latest.data?.id || latest.data?.data?.[0]?.id || latest.data?.timetable?.id || null;
   const latestMeta = latest.data?.data?.[0] || latest.data?.timetable || latest.data || null;
 
+  const retryAll = () => {
+    qc.invalidateQueries({ queryKey: ['teachers-count'] });
+    qc.invalidateQueries({ queryKey: ['rooms-count'] });
+    qc.invalidateQueries({ queryKey: ['batches-count'] });
+    qc.invalidateQueries({ queryKey: ['latest-timetable'] });
+  };
+
   return (
     <div className="stack">
-      <div className="spread">
+      <div className="spread page-head">
         <div>
-          <h1 style={{ margin: '4px 0', fontSize: 32, letterSpacing: '-0.02em' }}>Good morning, scheduler ☕</h1>
+          <h1 className="page-title">Good morning, scheduler ☕</h1>
           <p className="muted" style={{ margin: 0 }}>
             Three numbers, one button. No clashes. We checked twice.
           </p>
         </div>
-        <Link to="/generate" className="btn btn-gradient" style={{ textDecoration: 'none' }}>
+        <Link to="/generate" className="btn btn-gradient cta">
           ✨ Generate timetable
         </Link>
       </div>
@@ -45,7 +53,7 @@ export default function Dashboard() {
           <div className="empty-illus">🔌</div>
           <h3>Backend is napping</h3>
           <p className="muted">Start backend on :4000 and refresh. The UI is ready when it is.</p>
-          <button className="btn btn-gradient" onClick={() => window.location.reload()}>
+          <button type="button" className="btn btn-gradient" onClick={retryAll}>
             Retry connection
           </button>
         </div>

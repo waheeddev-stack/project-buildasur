@@ -38,7 +38,13 @@ export default function Grid() {
 
   const timetableQuery = useQuery({
     queryKey: ['timetable', id || 'latest'],
-    queryFn: () => (id ? apiGet(`/api/timetables/${id}`) : apiGet('/api/timetables?limit=1').then((d) => d?.data?.[0] || d?.timetable || d)),
+    queryFn: async () => {
+      if (id) return apiGet(`/api/timetables/${id}`);
+      const list = await apiGet('/api/timetables?limit=1');
+      const latest = list?.data?.[0] || list?.timetable || list?.data || null;
+      if (!latest || !latest.id) return { data: null, sessions: [] };
+      return apiGet(`/api/timetables/${latest.id}`);
+    },
     retry: false
   });
 
@@ -73,14 +79,29 @@ export default function Grid() {
     };
   }, [sessions]);
 
+  // Resolve a target slot id (from enriched sessions); backend also accepts day+period.
+  const knownSlotId = (day, period) => {
+    const hit = sessions.find((s) => (s.slot?.day ?? s.day) === day && (s.slot?.period ?? s.period) === period);
+    return hit?.slot?.id || null;
+  };
+
   const moveMut = useMutation({
-    mutationFn: ({ sessionId, day, period }) => apiPatch(`/api/sessions/${sessionId}`, { day, period, slotDay: day, slotPeriod: period }),
+    mutationFn: ({ sessionId, day, period }) => {
+      const body = { day, period };
+      const slotId = knownSlotId(day, period);
+      if (slotId) body.slot_id = slotId;
+      return apiPatch(`/api/sessions/${sessionId}`, body);
+    },
     onSuccess: () => {
       setConflictMsg('');
       qc.invalidateQueries({ queryKey: ['timetable'] });
     },
     onError: (e, vars) => {
-      setConflictMsg(e.message || 'That move would clash. Pick another slot?');
+      const why = e?.data?.error || e.message || 'That move would clash. Pick another slot?';
+      const fixes = Array.isArray(e?.data?.suggestions) && e.data.suggestions.length
+        ? ` Try ${e.data.suggestions.map((s) => `${s.day} P${s.period}`).join(', ')}.`
+        : '';
+      setConflictMsg(`${why}${fixes}`);
       setShakeKey(`${vars.day}|${vars.period}`);
       setTimeout(() => setShakeKey(null), 400);
     }
@@ -92,18 +113,11 @@ export default function Grid() {
   });
 
   const attemptMove = (session, day, period) => {
-    if (!session || session.isLocked || session.is_locked) {
+    if (!session) return;
+    if (session.isLocked || session.is_locked) {
       setConflictMsg('🔒 That session is locked. Unlock it to move.');
       return;
     }
-    // Client-side clash hint: same teacher/room/batch already in target slot.
-    const occupants = bySlot.get(`${day}|${period}`) || [];
-    const clash = occupants.find(
-      (o) =>
-        o.id !== session.id &&
-        ((o.teacherId || o.teacher_id) && (o.teacherId || o.teacher_id) === (session.teacherId || session.teacher_id) ? 'teacher' : null)
-    );
-    void clash;
     setConflictMsg('');
     moveMut.mutate({ sessionId: session.id, day, period });
   };
@@ -169,8 +183,8 @@ export default function Grid() {
         <h3>{backendDown(e) ? 'Start backend on :4000' : 'No timetable to show yet'}</h3>
         <p className="muted">{backendDown(e) ? 'The grid needs the API. Start it and retry.' : e.message || 'Generate one first — it takes one click.'}</p>
         <div className="row" style={{ justifyContent: 'center' }}>
-          <button className="btn btn-ghost" onClick={() => timetableQuery.refetch()}>Retry</button>
-          <Link to="/generate" className="btn btn-gradient" style={{ textDecoration: 'none' }}>Go generate ✨</Link>
+          <button type="button" className="btn btn-ghost" onClick={() => timetableQuery.refetch()}>Retry</button>
+          <Link to="/generate" className="btn btn-gradient">Go generate ✨</Link>
         </div>
       </div>
     );
@@ -182,7 +196,7 @@ export default function Grid() {
         <div className="empty-illus">📭</div>
         <h3>This timetable is empty</h3>
         <p className="muted">No sessions placed. Generate again or check assignments in Setup.</p>
-        <Link to="/generate" className="btn btn-gradient" style={{ textDecoration: 'none' }}>Generate ✨</Link>
+        <Link to="/generate" className="btn btn-gradient">Generate ✨</Link>
       </div>
     );
   }
@@ -191,26 +205,25 @@ export default function Grid() {
 
   return (
     <div className="stack">
-      <div className="spread">
+      <div className="spread page-head">
         <div>
-          <h1 style={{ margin: '4px 0' }}>{meta?.term ? `${meta.term} · ` : ''}Timetable grid</h1>
+          <h1 className="page-title">{meta?.term ? `${meta.term} · ` : ''}Timetable grid</h1>
           <p className="muted" style={{ margin: 0 }}>
             {meta?.status || 'draft'} · score {meta?.score ?? '—'} ·{' '}
             {(meta?.conflicts ?? 0) === 0 ? 'No clashes. We checked twice. 🎉' : `${meta?.conflicts} conflicts`} ·{' '}
             {selectedSessionId ? 'a session is selected — click a slot to move it' : 'drag a chip, or click it then click a slot'}
           </p>
         </div>
-        <div className="row">
+        <div className="row grid-controls">
           <div className="glass view-switch" role="tablist" aria-label="View switcher">
             {['batch', 'teacher', 'room'].map((m) => (
-              <button key={m} className={`btn btn-sm ${mode === m ? 'btn-gradient' : 'btn-ghost'}`} onClick={() => setMode(m)}>
+              <button key={m} type="button" className={`btn btn-sm ${mode === m ? 'btn-gradient' : 'btn-ghost'}`} onClick={() => setMode(m)}>
                 {m[0].toUpperCase() + m.slice(1)}
               </button>
             ))}
           </div>
           <input
-            className="input"
-            style={{ maxWidth: 180 }}
+            className="input filter-input"
             placeholder={`Filter ${mode} id…`}
             value={filterId}
             onChange={(e) => setFilterId(e.target.value)}
@@ -281,24 +294,24 @@ export default function Grid() {
 
         <aside className="glass card side-panel stack">
           <h3 style={{ margin: 0 }}>Actions</h3>
-          <button className="btn btn-gradient" disabled={publishMut.isPending} onClick={() => publishMut.mutate()}>
+          <button type="button" className="btn btn-gradient" disabled={publishMut.isPending} onClick={() => publishMut.mutate()}>
             {publishMut.isPending ? 'Publishing…' : 'Publish'}
           </button>
           {publishMut.isError && <span className="microcopy">⚠️ {publishMut.error.message}</span>}
           {publishMut.isSuccess && <span className="microcopy">✅ Published. Students see it now.</span>}
           <div className="row">
-            <button className="btn btn-ghost btn-sm" onClick={() => exportFile('csv')}>Export CSV</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => exportFile('ics')}>Export ICS</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => exportFile('csv')}>Export CSV</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => exportFile('ics')}>Export ICS</button>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setSnapshotMsg('Snapshot saved. Undo/redo history lands with named versions in v1.1.'); setTimeout(() => setSnapshotMsg(''), 4000); }}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setSnapshotMsg('Snapshot saved. Undo/redo history lands with named versions in v1.1.'); setTimeout(() => setSnapshotMsg(''), 4000); }}>
             📸 Snapshot
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShareOpen((v) => !v)}>🔗 Share link / QR</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShareOpen((v) => !v)}>🔗 Share link / QR</button>
           {shareOpen && (
             <div className="stack">
               <input className="input" readOnly value={shareUrl} onFocus={(e) => e.target.select()} />
               <p className="microcopy">QR code renders here in v1.1 — this link is already shareable (published only).</p>
-              <button className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy link</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => navigator.clipboard?.writeText(shareUrl)}>Copy link</button>
             </div>
           )}
           <h3 style={{ margin: '8px 0 0' }}>Conflicts</h3>

@@ -5,9 +5,9 @@ const { requireAuth, requireRole } = require('../auth');
 const { seedDatabase } = require('../seed');
 
 const router = express.Router();
-router.use(requireAuth);
+// requireAuth applied per-route so this /api-mounted router never blocks public routes.
 
-router.get('/rooms/free', (req, res) => {
+router.get('/rooms/free', requireAuth, (req, res) => {
   const { day, period, timetableId } = req.query;
   if (!day || !period) {
     return res.status(400).json({ error: 'Give day and period, e.g. ?day=Tue&period=3.', fix: 'Add both query parameters.' });

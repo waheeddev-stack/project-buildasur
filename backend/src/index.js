@@ -45,12 +45,13 @@ try {
 }
 
 app.use('/api/auth', authRoutes);
-app.use('/api', mastersRoutes);          // /api/teachers|rooms|subjects|batches|assignments
 app.use('/api/time-grid', gridRoutes);
-app.use('/api', timetablesRoutes);       // /api/timetables*, /api/sessions/:id
+app.use('/api', timetablesRoutes);       // /api/timetables* (public read), /api/sessions/:id
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/ai', aiRoutes);
+// misc before masters so /api/rooms/free wins over /api/rooms/:id
 app.use('/api', miscRoutes);             // /api/rooms/free, /api/audit-log, /api/seed
+app.use('/api', mastersRoutes);          // /api/teachers|rooms|subjects|batches|assignments
 
 app.get('/api/me', requireAuth, (req, res) => {
   const { password_hash, ...safe } = req.user;

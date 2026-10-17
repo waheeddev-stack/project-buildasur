@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiGet, apiPost, backendDown } from '../api.js';
 
@@ -77,22 +78,40 @@ export default function Setup() {
         <div className="empty-illus">🔌</div>
         <h3>Start backend on :4000</h3>
         <p className="muted">Setup needs the API for teachers, rooms and the rest. The wizard will wait for you.</p>
-        <button className="btn btn-gradient" onClick={() => window.location.reload()}>Retry</button>
+        <button
+          type="button"
+          className="btn btn-gradient"
+          onClick={() => {
+            qc.invalidateQueries({ queryKey: ['teachers'] });
+            qc.invalidateQueries({ queryKey: ['rooms'] });
+            qc.invalidateQueries({ queryKey: ['subjects'] });
+            qc.invalidateQueries({ queryKey: ['batches'] });
+          }}
+        >
+          Retry
+        </button>
       </div>
     );
   }
 
   return (
     <div className="stack">
-      <h1 style={{ margin: '4px 0' }}>Setup wizard</h1>
+      <h1 className="page-title">Setup wizard</h1>
       <p className="muted" style={{ margin: 0 }}>Five tiny steps. Future-you says thanks.</p>
 
       <div className="progress-line" aria-label="Setup progress">
         <div style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />
       </div>
-      <div className="wizard-steps">
+      <div className="wizard-steps" role="tablist" aria-label="Setup steps">
         {STEPS.map((s, i) => (
-          <button key={s} className={`btn btn-sm ${i === step ? 'btn-gradient' : 'btn-ghost'}`} onClick={() => setStep(i)}>
+          <button
+            key={s}
+            type="button"
+            role="tab"
+            aria-selected={i === step}
+            className={`btn btn-sm ${i === step ? 'btn-gradient' : 'btn-ghost'}`}
+            onClick={() => setStep(i)}
+          >
             {i + 1}. {s}
           </button>
         ))}
@@ -128,8 +147,8 @@ export default function Setup() {
                 onChange={(e) => setGridForm((f) => ({ ...f, periodsPerDay: Number(e.target.value) }))} />
             </label>
           </div>
-          {grid.data ? <p className="microcopy">Current grid: {JSON.stringify(grid.data).slice(0, 160)}</p> : <p className="microcopy">No grid saved yet — pick days + periods and save.</p>}
-          <div><button className="btn btn-gradient" disabled={gridMut.isPending} onClick={() => gridMut.mutate({ days: gridForm.days, periodsPerDay: gridForm.periodsPerDay, periods: gridForm.periodsPerDay })}>Save time grid</button></div>
+          {grid.data?.data ? <p className="microcopy wrap-anywhere">Current grid: {JSON.stringify(grid.data.data).slice(0, 160)}</p> : <p className="microcopy">No grid saved yet — pick days + periods and save.</p>}
+          <div><button type="button" className="btn btn-gradient" disabled={gridMut.isPending} onClick={() => gridMut.mutate({ days: gridForm.days, periodsPerDay: gridForm.periodsPerDay, periods: gridForm.periodsPerDay })}>Save time grid</button></div>
         </div>
       )}
 
@@ -142,7 +161,7 @@ export default function Setup() {
             <label className="field"><span className="lbl">Max hrs / day</span><input className="input" type="number" value={teacherForm.maxHoursDay} onChange={(e) => setTeacherForm({ ...teacherForm, maxHoursDay: Number(e.target.value), max_hours_day: Number(e.target.value) })} /></label>
             <label className="field"><span className="lbl">Max hrs / week</span><input className="input" type="number" value={teacherForm.maxHoursWeek} onChange={(e) => setTeacherForm({ ...teacherForm, maxHoursWeek: Number(e.target.value), max_hours_week: Number(e.target.value) })} /></label>
           </div>
-          <div><button className="btn btn-gradient" disabled={teacherMut.isPending || !teacherForm.name} onClick={() => teacherMut.mutate({ ...teacherForm, max_hours_day: teacherForm.maxHoursDay, max_hours_week: teacherForm.maxHoursWeek })}>Add teacher</button></div>
+          <div><button type="button" className="btn btn-gradient" disabled={teacherMut.isPending || !teacherForm.name} onClick={() => teacherMut.mutate({ ...teacherForm, max_hours_day: teacherForm.maxHoursDay, max_hours_week: teacherForm.maxHoursWeek })}>Add teacher</button></div>
           {teachers.isLoading ? <div className="skeleton" style={{ height: 60 }} /> : list(teachers).length === 0 ? <p className="muted">No teachers yet — add your first one above.</p> : (
             <ul>{list(teachers).slice(0, 8).map((t) => <li key={t.id}>{t.name} {t.department ? `· ${t.department}` : ''}</li>)}</ul>
           )}
@@ -163,7 +182,7 @@ export default function Setup() {
               </select>
             </label>
           </div>
-          <div><button className="btn btn-gradient" disabled={roomMut.isPending || !roomForm.name} onClick={() => roomMut.mutate(roomForm)}>Add room</button></div>
+          <div><button type="button" className="btn btn-gradient" disabled={roomMut.isPending || !roomForm.name} onClick={() => roomMut.mutate(roomForm)}>Add room</button></div>
           {rooms.isLoading ? <div className="skeleton" style={{ height: 60 }} /> : list(rooms).length === 0 ? <p className="muted">No rooms yet — labs count too.</p> : (
             <ul>{list(rooms).slice(0, 8).map((r) => <li key={r.id}>{r.name} · {r.type} · {r.capacity}</li>)}</ul>
           )}
@@ -185,7 +204,7 @@ export default function Setup() {
               </label>
               <label className="field"><span className="lbl">Sessions / week</span><input className="input" type="number" value={subjectForm.sessionsPerWeek} onChange={(e) => setSubjectForm({ ...subjectForm, sessionsPerWeek: Number(e.target.value), sessions_per_week: Number(e.target.value) })} /></label>
             </div>
-            <div><button className="btn btn-gradient" disabled={subjectMut.isPending || !subjectForm.name} onClick={() => subjectMut.mutate({ ...subjectForm, sessions_per_week: subjectForm.sessionsPerWeek, periods_per_session: subjectForm.periodsPerSession })}>Add subject</button></div>
+            <div><button type="button" className="btn btn-gradient" disabled={subjectMut.isPending || !subjectForm.name} onClick={() => subjectMut.mutate({ ...subjectForm, sessions_per_week: subjectForm.sessionsPerWeek, periods_per_session: subjectForm.periodsPerSession })}>Add subject</button></div>
           </div>
           <div className="glass card stack">
             <h3>Batches ({list(batches).length})</h3>
@@ -195,7 +214,7 @@ export default function Setup() {
               <label className="field"><span className="lbl">Division</span><input className="input" value={batchForm.division} onChange={(e) => setBatchForm({ ...batchForm, division: e.target.value })} /></label>
               <label className="field"><span className="lbl">Strength</span><input className="input" type="number" value={batchForm.strength} onChange={(e) => setBatchForm({ ...batchForm, strength: Number(e.target.value) })} /></label>
             </div>
-            <div><button className="btn btn-gradient" disabled={batchMut.isPending || !batchForm.program} onClick={() => batchMut.mutate(batchForm)}>Add batch</button></div>
+            <div><button type="button" className="btn btn-gradient" disabled={batchMut.isPending || !batchForm.program} onClick={() => batchMut.mutate(batchForm)}>Add batch</button></div>
           </div>
         </div>
       )}
@@ -215,17 +234,17 @@ export default function Setup() {
               </select>
             </label>
           </div>
-          <div><button className="btn btn-gradient" disabled={assignMut.isPending} onClick={() => assignMut.mutate({ subject_id: assignForm.subjectId, batch_id: assignForm.batchId, teacher_id: assignForm.teacherId, required_room_type: assignForm.requiredRoomType })}>Link assignment</button></div>
+          <div><button type="button" className="btn btn-gradient" disabled={assignMut.isPending} onClick={() => assignMut.mutate({ subject_id: assignForm.subjectId, batch_id: assignForm.batchId, teacher_id: assignForm.teacherId, required_room_type: assignForm.requiredRoomType })}>Link assignment</button></div>
           <p className="microcopy">Tip: IDs are shown in the lists above. CSV bulk import lands in v1.1 — flat inputs for now, on purpose.</p>
         </div>
       )}
 
-      <div className="row">
-        <button className="btn btn-ghost" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>← Back</button>
+      <div className="row wizard-nav">
+        <button type="button" className="btn btn-ghost" disabled={step === 0} onClick={() => setStep((s) => s - 1)}>← Back</button>
         {step < STEPS.length - 1 ? (
-          <button className="btn btn-gradient" onClick={() => setStep((s) => s + 1)}>Next →</button>
+          <button type="button" className="btn btn-gradient" onClick={() => setStep((s) => s + 1)}>Next →</button>
         ) : (
-          <a href="/generate" className="btn btn-gradient" style={{ textDecoration: 'none' }}>Generate ✨</a>
+          <Link to="/generate" className="btn btn-gradient">Generate ✨</Link>
         )}
       </div>
     </div>

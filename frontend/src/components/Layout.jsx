@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiGet } from '../api.js';
 import { useAuth, useTheme } from '../store.js';
@@ -29,9 +29,16 @@ export default function Layout() {
   const logout = useAuth((s) => s.logout);
   const { theme, toggle } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [q, setQ] = useState('');
   const { data } = usePaletteData(open);
+
+  // Close mobile menu on every navigation (fixes stuck-open drawer)
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -66,12 +73,32 @@ export default function Layout() {
     navigate(`/timetable?${r.kind}=${encodeURIComponent(r.id)}`);
   };
 
+  const handleLogout = () => {
+    logout();
+    setMenuOpen(false);
+    navigate('/login', { replace: true });
+  };
+
+  const handleLogin = () => {
+    setMenuOpen(false);
+    navigate('/login');
+  };
+
   return (
     <div className="app-shell">
       <div className="app-glow" aria-hidden="true" />
       <div className="container">
         <nav className="nav glass" aria-label="Primary">
-          <NavLink to="/" className="nav-brand">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm nav-menu-btn"
+            aria-expanded={menuOpen}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            {menuOpen ? '✕' : '☰'}
+          </button>
+          <NavLink to="/" className="nav-brand" onClick={() => setMenuOpen(false)}>
             Slot<span>Sync</span>
           </NavLink>
           <div className="nav-links">
@@ -92,33 +119,60 @@ export default function Layout() {
             </NavLink>
           </div>
           <div className="nav-right">
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(true)} title="Jump to batch / teacher / room (Ctrl+K)">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(true)} title="Jump to batch / teacher / room (Ctrl+K)">
               ⌘K
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={toggle} title="Toggle theme">
-              {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+            <button type="button" className="btn btn-ghost btn-sm theme-toggle" onClick={toggle} title="Toggle theme">
+              <span aria-hidden="true">{theme === 'dark' ? '☀️' : '🌙'}</span>
+              <span className="theme-label">{theme === 'dark' ? ' Light' : ' Dark'}</span>
             </button>
             {user ? (
               <>
-                <span className="muted" style={{ fontSize: 13 }}>
+                <span className="muted nav-user" title={user.name || user.email}>
                   {user.name || user.email}
                 </span>
                 <button
+                  type="button"
                   className="btn btn-ghost btn-sm"
-                  onClick={() => {
-                    logout();
-                    navigate('/login');
-                  }}
+                  onClick={handleLogout}
                 >
                   Logout
                 </button>
               </>
             ) : (
-              <button className="btn btn-gradient btn-sm" onClick={() => navigate('/login')}>
+              <button type="button" className="btn btn-gradient btn-sm" onClick={handleLogin}>
                 Login
               </button>
             )}
           </div>
+          {menuOpen && (
+            <div className="nav-mobile-menu" role="menu" aria-label="Mobile navigation">
+              <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
+                Dashboard
+              </NavLink>
+              <NavLink to="/setup" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
+                Setup
+              </NavLink>
+              <NavLink to="/generate" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
+                Generate
+              </NavLink>
+              <NavLink to="/timetable" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
+                Timetable
+              </NavLink>
+              <NavLink to="/today" className={({ isActive }) => (isActive ? 'active' : '')} onClick={() => setMenuOpen(false)}>
+                Today
+              </NavLink>
+              {user ? (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={handleLogout}>
+                  Logout ({user.name || user.email})
+                </button>
+              ) : (
+                <button type="button" className="btn btn-gradient btn-sm" onClick={handleLogin}>
+                  Login
+                </button>
+              )}
+            </div>
+          )}
         </nav>
       </div>
 
@@ -142,11 +196,16 @@ export default function Layout() {
             <div className="mt">
               {results.length === 0 && <p className="muted">No matches. Try another name — we believe in you.</p>}
               {results.map((r) => (
-                <button key={`${r.kind}-${r.id}`} className="palette-item" onClick={() => go(r)}>
+                <button type="button" key={`${r.kind}-${r.id}`} className="palette-item" onClick={() => go(r)}>
                   <span>{r.label}</span>
                   <span className="muted">{r.kind}</span>
                 </button>
               ))}
+            </div>
+            <div className="mt row" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+                Close (Esc)
+              </button>
             </div>
           </div>
         </div>

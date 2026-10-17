@@ -72,6 +72,22 @@ function requireAuth(req, res, next) {
   }
 }
 
+// Like requireAuth, but never blocks: sets req.user when a valid token is present,
+// otherwise leaves it null. Used by public read-only routes (published timetables).
+function optionalAuth(req, res, next) {
+  const h = req.headers.authorization || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+  if (!token) { req.user = null; return next(); }
+  try {
+    const p = jwt.verify(token, secret());
+    const user = db.findById('users', p.sub);
+    req.user = user && user.is_active !== false ? user : null;
+  } catch (e) {
+    req.user = null;
+  }
+  next();
+}
+
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ error: 'Please log in first.', fix: 'Log in again to continue.' });
@@ -91,5 +107,5 @@ function deptOk(req, departmentId) {
 
 module.exports = {
   signAccess, signRefresh, setRefreshCookie, clearRefreshCookie, revokeRefresh,
-  requireAuth, requireRole, deptOk, COOKIE_NAME,
+  requireAuth, optionalAuth, requireRole, deptOk, COOKIE_NAME,
 };

@@ -1,17 +1,20 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { apiPost, setAccessToken } from '../api.js';
 import { useAuth } from '../store.js';
 
 const DEMOS = [
-  { label: 'Admin demo', email: 'admin@slotsync.demo', password: 'slotsync-admin-01' },
-  { label: 'HOD demo', email: 'hod@slotsync.demo', password: 'slotsync-hod-01' },
-  { label: 'Teacher demo', email: 'teacher@slotsync.demo', password: 'slotsync-teacher-01' }
+  { label: 'Admin demo', email: 'admin@slotsync.local', password: 'admin12345678' },
+  { label: 'HOD demo', email: 'hod.cse@slotsync.local', password: 'hod12345678' },
+  { label: 'Teacher demo', email: 'teacher1@slotsync.local', password: 'teach12345678' },
+  { label: 'Student demo', email: 'student1@slotsync.local', password: 'stud12345678' }
 ];
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from || '/';
   const login = useAuth((s) => s.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,7 +31,7 @@ export default function Login() {
       const accessToken = data.accessToken || data.token || '';
       setAccessToken(accessToken);
       login(data.user || { email: creds.email, name: creds.email.split('@')[0] }, accessToken);
-      navigate('/', { replace: true });
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err.backendDown ? 'Start backend on :4000 — we could not reach the API.' : err.message);
     } finally {
@@ -69,9 +72,9 @@ export default function Login() {
           </form>
           <div className="mt">
             <p className="microcopy">Just looking around? One tap:</p>
-            <div className="row">
+            <div className="row demo-row">
               {DEMOS.map((d) => (
-                <button key={d.label} className="btn btn-ghost btn-sm" disabled={busy} onClick={(e) => submit(e, d)}>
+                <button key={d.label} type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={(e) => submit(e, d)}>
                   {d.label}
                 </button>
               ))}

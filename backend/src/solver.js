@@ -255,54 +255,35 @@ function generateTimetable(data, options = {}) {
     return infeasible(ordered, { teachers, teacherById, subjectById, batchById, getRooms, scored, daysInOrder, slots, timedOut });
   }
 
-  // Hill-climbing on soft constraints: random swaps that keep hard rules.
-  let score = softScore(placed, { batchById, subjectById, teacherById });
-  for (let iter = 0; iter < 1500; iter++) {
-    if (Date.now() - t0 > timeLimitMs + 4000) break;
-    const i = Math.floor(Math.random() * placed.length);
-    const j = Math.floor(Math.random() * placed.length);
-    if (i === j) continue;
-    const A = placed[i], B = placed[j];
-    if (A.task.len !== B.task.len) continue;
-    if (A.block[0].day === B.block[0].day && A.room.id === B.room.id) continue;
-    // try swap blocks+rooms if hard-valid
-    occupy(A.task, A.block, A.room, false);
-    occupy(B.task, B.block, B.room, false);
-    const aOk = blockFree(B.task, A.block, A.room.id) || (sameBlock(A.block, B.block) && false);
-    // Simpler: swap blocks, keep rooms if they fit, else keep original rooms when they fit swapped
-    const roomForA = roomFitsSwap(A.task, B.block, B.room, A.room, getRooms);
-    const roomForB = roomFitsSwap(B.task, A.block, A.room, B.room, getRooms);
-    let improved = false;
-    if (roomForA && roomForB) {
-      // tentatively apply
-      occupy(A.task, B.block, roomForA, true);
-      occupy(B.task, A.block, roomForB, true);
-      const s2 = softScore(placed.map((p, k) => k === i ? { task: p.task, block: B.block, room: roomForA } : k === j ? { task: p.task, block: A.block, room: roomForB } : p), { batchById, subjectById, teacherById });
-      if (s2 > score) {
-        placed[i] = { task: A.task, block: B.block, room: roomForA };
-        placed[j] = { task: B.task, block: A.block, room: roomForB };
-        score = s2; improved = true;
-      } else {
-        occupy(A.task, B.block, roomForA, false);
-        occupy(B.task, A.block, roomForB, false);
-        occupy(A.task, A.block, A.room, true);
-        occupy(B.task, B.block, B.room, true);
+  // Local search: repeatedly relocate each block (re-picking its day/period and
+  // room) whenever it raises the spread score, while every hard rule stays
+  // intact. Score only ever increases, so this converges (no cycles).
+  const softCtx = { batchById, subjectById, teacherById };
+  const optDeadline = t0 + timeLimitMs + 8000;
+  let score = softScore(placed, softCtx);
+  let improved = true;
+  while (improved && Date.now() < optDeadline) {
+    improved = false;
+    for (let i = 0; i < placed.length; i++) {
+      const A = placed[i];
+      occupy(A.task, A.block, A.room, false); // free A while we look for a better home
+      let bestBlock = A.block, bestRoom = A.room, bestScore = score;
+      for (const d of daysInOrder) {
+        for (const b of blocksFor(A.task, d)) {
+          for (const r of getRooms(A.task)) {
+            if (!blockFree(A.task, b, r.id)) continue;
+            const trial = placed.slice();
+            trial[i] = { task: A.task, block: b, room: r };
+            const s = softScore(trial, softCtx);
+            if (s > bestScore) { bestScore = s; bestBlock = b; bestRoom = r; }
+          }
+        }
       }
-    } else {
-      occupy(A.task, A.block, A.room, true);
-      occupy(B.task, B.block, B.room, true);
+      occupy(A.task, bestBlock, bestRoom, true);
+      placed[i] = { task: A.task, block: bestBlock, room: bestRoom };
+      if (bestScore > score) { score = bestScore; improved = true; }
+      if (Date.now() > optDeadline) break;
     }
-    if (improved) continue;
-  }
-
-  function sameBlock(a, b) { return a.length === b.length && a.every((s, k) => s.id === b[k].id); }
-  function roomFitsSwap(task, block, prefer, fallback, getRoomsFn) {
-    const rms = getRoomsFn(task);
-    for (const r of [prefer, fallback]) {
-      if (r && rms.some((x) => x.id === r.id) && blockFree(task, block, r.id)) return r;
-    }
-    for (const r of rms) if (blockFree(task, block, r.id)) return r;
-    return null;
   }
 
   progress(1);
@@ -324,40 +305,36 @@ function generateTimetable(data, options = {}) {
 }
 
 function softScore(placed, ctx) {
-  // Higher is better. Penalties: same subject twice a day per batch, batch gaps,
-  // heavy subject in last period, teacher early+late same day.
+  // Higher is better. The n*(n-1) term is the workhorse: it strongly rewards
+  // spreading a batch's AND a teacher's lectures across more days (a day with
+  // 4 lectures costs 12, four days with 1 each cost 0). Then small nudges for
+  // compact days (no idle gaps) and theory not squatting in a lab room.
   let score = 1000;
-  const byBatchDay = new Map();
-  const teacherDayPeriods = new Map();
+  const batchDay = new Map();   // batch|day -> [periods]
+  const teacherDay = new Map(); // teacher|day -> [periods]
   for (const p of placed) {
     const day = p.block[0].day;
-    const k = `${p.task.assignment.batch_id}|${day}`;
-    if (!byBatchDay.has(k)) byBatchDay.set(k, []);
-    byBatchDay.get(k).push(p);
+    const bk = `${p.task.assignment.batch_id}|${day}`;
+    if (!batchDay.has(bk)) batchDay.set(bk, []);
     const tk = `${p.task.assignment.teacher_id}|${day}`;
-    if (!teacherDayPeriods.has(tk)) teacherDayPeriods.set(tk, []);
-    for (const s of p.block) teacherDayPeriods.get(tk).push(s.period);
+    if (!teacherDay.has(tk)) teacherDay.set(tk, []);
+    for (const s of p.block) { batchDay.get(bk).push(s.period); teacherDay.get(tk).push(s.period); }
   }
-  for (const [, list] of byBatchDay) {
-    const seen = new Map();
-    for (const p of list) {
-      const c = (seen.get(p.task.subject.id) || 0) + 1;
-      seen.set(p.task.subject.id, c);
-      if (c > 1) score -= 8; // same subject twice a day
-    }
-    const pers = list.flatMap((p) => p.block.map((s) => s.period)).sort((a, b) => a - b);
-    if (pers.length > 1) {
-      const span = pers[pers.length - 1] - pers[0] + 1;
-      score -= (span - pers.length) * 3; // gaps
-      const last = Math.max(...pers);
-      for (const p of list) {
-        if (p.block.some((s) => s.period === last) && p.task.subject.type !== 'lab') score -= 1;
-      }
+  for (const [, pers] of batchDay) {
+    const n = pers.length;
+    score -= n * (n - 1); // spread one batch's lectures over more days
+    if (n > 1) {
+      const span = Math.max(...pers) - Math.min(...pers) + 1;
+      score -= (span - n) * 2; // penalize idle gaps inside a day
     }
   }
-  for (const [, pers] of teacherDayPeriods) {
-    const mn = Math.min(...pers), mx = Math.max(...pers);
-    if (mx - mn >= 4 && pers.length <= 3) score -= 2; // early + late with little in between
+  for (const [, pers] of teacherDay) {
+    const n = pers.length;
+    score -= n * (n - 1); // spread one teacher's lectures over more days
+  }
+  for (const p of placed) {
+    const need = p.task.assignment.required_room_type || (p.task.subject.type === 'lab' ? 'lab' : null);
+    if (need !== 'lab' && p.room.type === 'lab') score -= 1; // theory belongs in a lecture room
   }
   return score;
 }

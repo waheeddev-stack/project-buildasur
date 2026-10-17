@@ -72,6 +72,28 @@ function validatePlacement(timetableId, slotId, teacherId, roomId, batchId, assi
     if (subj && subj.type === 'lab' && room && room.type !== 'lab') {
       return { error: `${subj.name} is a lab and needs a lab room.`, fix: 'Pick a lab room.', suggestions: [] };
     }
+    // Hard rule: a batch never sits the same subject twice on the same day.
+    if (subj) {
+      let ignoreGroup = null;
+      if (ignoreSessionId) {
+        const cur = db.findById('sessions', ignoreSessionId);
+        ignoreGroup = cur && cur.session_group;
+      }
+      const repeated = db.find('sessions', (s) =>
+        s.timetable_id === timetableId &&
+        s.batch_id === batchId &&
+        s.id !== ignoreSessionId &&
+        !(ignoreGroup && s.session_group === ignoreGroup)
+      ).some((s) => {
+        const sa = s.assignment_id && db.findById('assignments', s.assignment_id);
+        const ssub = sa && db.findById('subjects', sa.subject_id);
+        const sslot = db.findById('time_slots', s.slot_id);
+        return ssub && sslot && sslot.day === slot.day && ssub.id === subj.id;
+      });
+      if (repeated) {
+        return { error: `${batchName(batchId)} already has ${subj.name} on ${slot.day}.`, fix: 'Pick another day (or a different subject).', suggestions: [] };
+      }
+    }
   }
   return null;
 }

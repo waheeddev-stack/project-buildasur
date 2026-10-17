@@ -42,6 +42,7 @@ function generateTimetable(data, options = {}) {
   const teacherById = new Map(teachers.map((t) => [t.id, t]));
   const batchById = new Map(batches.map((b) => [b.id, b]));
   const slotById = new Map(slots.map((s) => [s.id, s]));
+  const assignmentById = new Map(assignments.map((a) => [a.id, a]));
 
   const unavailSet = new Set(unavail.map((u) => `${u.teacher_id}|${u.day}|${u.period}`));
   const isUnavail = (teacherId, day, per) => unavailSet.has(`${teacherId}|${day}|${per}`);
@@ -130,13 +131,24 @@ function generateTimetable(data, options = {}) {
   const occBatch = new Map();   // slotId -> Set batchId
   const dayHours = new Map();   // teacher|day -> periods
   const weekHours = new Map();  // teacher -> periods
+  // Hard rule: a batch never gets the same subject twice on the same day.
+  const batchDaySubject = new Map(); // batch|day -> Set subjectId
   const touch = (m, k) => { if (!m.has(k)) m.set(k, new Set()); return m.get(k); };
+
+  const dayHasSubject = (batchId, day, subjectId) => {
+    const set = batchDaySubject.get(`${batchId}|${day}`);
+    return !!(set && set.has(subjectId));
+  };
 
   // Locked sessions occupy first (one row per period).
   for (const L of locked) {
     touch(occTeacher, L.slot_id).add(L.teacher_id);
     touch(occRoom, L.slot_id).add(L.room_id);
     touch(occBatch, L.slot_id).add(L.batch_id);
+    const la = assignmentById.get(L.assignment_id);
+    const lsubject = la && subjectById.get(la.subject_id);
+    const lslot = slotById.get(L.slot_id);
+    if (lsubject && lslot) touch(batchDaySubject, `${L.batch_id}|${lslot.day}`).add(lsubject.id);
   }
 
   const placed = []; // {task, block, room}
@@ -153,6 +165,7 @@ function generateTimetable(data, options = {}) {
 
   function blockFree(task, block, roomId) {
     const a = task.assignment;
+    if (dayHasSubject(a.batch_id, block[0].day, task.subject.id)) return false;
     if (!teacherHoursOk(a.teacher_id, block[0].day, block.length)) return false;
     for (const s of block) {
       if (touch(occTeacher, s.id).has(a.teacher_id)) return false;
@@ -167,6 +180,13 @@ function generateTimetable(data, options = {}) {
   function occupy(task, block, room, on) {
     const a = task.assignment;
     const d = block[0].day;
+    const bsKey = `${a.batch_id}|${d}`;
+    if (on) {
+      touch(batchDaySubject, bsKey).add(task.subject.id);
+    } else {
+      const set = batchDaySubject.get(bsKey);
+      if (set) { set.delete(task.subject.id); if (set.size === 0) batchDaySubject.delete(bsKey); }
+    }
     dayHours.set(`${a.teacher_id}|${d}`, (dayHours.get(`${a.teacher_id}|${d}`) || 0) + (on ? block.length : -block.length));
     weekHours.set(a.teacher_id, (weekHours.get(a.teacher_id) || 0) + (on ? block.length : -block.length));
     for (const s of block) {

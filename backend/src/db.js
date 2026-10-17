@@ -131,7 +131,8 @@ async function mysqlPoolGet() {
   const mysql = require('mysql2/promise');
   // First connect without db to CREATE DATABASE if missing.
   const cfg = mysqlConfig();
-  const tmp = await mysql.createConnection({ host: cfg.host, port: cfg.port, user: cfg.user, password: cfg.password });
+  // Bootstrap connection (no database yet) — must still use TLS for managed MySQL/TiDB.
+  const tmp = await mysql.createConnection({ host: cfg.host, port: cfg.port, user: cfg.user, password: cfg.password, ...(cfg.ssl ? { ssl: cfg.ssl } : {}) });
   await tmp.query(`CREATE DATABASE IF NOT EXISTS \`${cfg.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   await tmp.end();
   mysqlPool = mysql.createPool({ ...cfg, charset: 'utf8mb4_unicode_ci' });

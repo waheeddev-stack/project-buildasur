@@ -30,15 +30,25 @@ const schemas = {
     update: z.object({ name: z.string().min(1).optional(), capacity: z.number().int().min(1).optional(), type: z.enum(['lecture', 'lab', 'seminar']).optional() }),
   },
   subjects: {
-    create: z.object({ code: z.string().min(1), name: z.string().min(1), type: z.enum(['theory', 'lab']), sessions_per_week: z.number().int().min(1).max(10), periods_per_session: z.number().int().min(1).max(4).optional() }),
-    update: z.object({ code: z.string().min(1).optional(), name: z.string().min(1).optional(), type: z.enum(['theory', 'lab']).optional(), sessions_per_week: z.number().int().min(1).max(10).optional(), periods_per_session: z.number().int().min(1).max(4).optional() }),
+    create: z.object({
+      code: z.string().min(1), name: z.string().min(1), type: z.enum(['theory', 'lab']),
+      sessions_per_week: z.number().int().min(1).max(10), periods_per_session: z.number().int().min(1).max(4).optional(),
+      department_id: z.string().optional(), teacher_id: z.string().optional(),
+    }),
+    update: z.object({
+      code: z.string().min(1).optional(), name: z.string().min(1).optional(), type: z.enum(['theory', 'lab']).optional(),
+      sessions_per_week: z.number().int().min(1).max(10).optional(), periods_per_session: z.number().int().min(1).max(4).optional(),
+      department_id: z.string().optional().nullable(), teacher_id: z.string().optional().nullable(),
+    }),
   },
   batches: {
     create: z.object({ program: z.string().min(1), semester: z.number().int().min(1), division: z.string().min(1), strength: z.number().int().min(1), parent_batch_id: z.string().nullable().optional() }),
     update: z.object({ program: z.string().min(1).optional(), semester: z.number().int().min(1).optional(), division: z.string().min(1).optional(), strength: z.number().int().min(1).optional(), parent_batch_id: z.string().nullable().optional() }),
   },
+  // A subject has exactly one teacher, so assignments only pick subject + batch;
+  // teacher_id is derived from the subject (may still be sent, must match).
   assignments: {
-    create: z.object({ subject_id: z.string().min(1), batch_id: z.string().min(1), teacher_id: z.string().min(1), required_room_type: z.enum(['lecture', 'lab', 'seminar']).nullable().optional() }),
+    create: z.object({ subject_id: z.string().min(1), batch_id: z.string().min(1), teacher_id: z.string().min(1).optional(), required_room_type: z.enum(['lecture', 'lab', 'seminar']).nullable().optional() }),
     update: z.object({ subject_id: z.string().min(1).optional(), batch_id: z.string().min(1).optional(), teacher_id: z.string().min(1).optional(), required_room_type: z.enum(['lecture', 'lab', 'seminar']).nullable().optional() }),
   },
 };
@@ -80,16 +90,61 @@ function scopeDept(req, col, body) {
   return 'admin-only';
 }
 
+const teacherName = (id) => (db.findById('teachers', id) || {}).name || 'that teacher';
+
 function checkRefs(col, body) {
   if (col === 'assignments') {
-    if (body.subject_id && !db.findById('subjects', body.subject_id)) return 'Subject not found.';
+    const subject = body.subject_id ? db.findById('subjects', body.subject_id) : null;
+    if (body.subject_id && !subject) return 'Subject not found.';
     if (body.batch_id && !db.findById('batches', body.batch_id)) return 'Batch not found.';
     if (body.teacher_id && !db.findById('teachers', body.teacher_id)) return 'Teacher not found.';
+    // One teacher per subject: derive the teacher, or reject a mismatch.
+    if (subject) {
+      if (!body.teacher_id) {
+        if (!subject.teacher_id) return `Assign a teacher to ${subject.code || subject.name} first (Subjects step).`;
+        body.teacher_id = subject.teacher_id;
+      } else if (subject.teacher_id && String(body.teacher_id) !== String(subject.teacher_id)) {
+        return `${subject.code || subject.name} is taught by ${teacherName(subject.teacher_id)} — a subject has one teacher.`;
+      }
+    }
+  }
+  if (col === 'subjects') {
+    if (body.department_id) {
+      const dep = resolveDepartment(body.department_id);
+      if (!dep) return 'Department not found.';
+      body.department_id = dep.id; // normalise name → id
+    }
+    if (body.teacher_id) {
+      const t = db.findById('teachers', body.teacher_id);
+      if (!t) return 'Teacher not found.';
+      if (body.department_id && t.department_id && t.department_id !== body.department_id) {
+        return `${t.name} is in another department. Pick a teacher from the chosen department.`;
+      }
+    }
   }
   if (col === 'teachers' && body.department_id) {
     const dep = resolveDepartment(body.department_id);
     if (!dep) return 'Department not found.';
     body.department_id = dep.id; // normalise name → id
+  }
+  return null;
+}
+
+// Deleting master data that is still in use would orphan assignments/sessions.
+function referencedBy(col, id) {
+  if (col === 'subjects') {
+    const n = db.find('assignments', (a) => a.subject_id === id).length;
+    return n ? `${n} assignment(s) use this subject. Remove them first.` : null;
+  }
+  if (col === 'batches') {
+    const a = db.find('assignments', (x) => x.batch_id === id).length;
+    const s = db.find('sessions', (x) => x.batch_id === id).length;
+    if (a || s) return `${a} assignment(s) and ${s} scheduled session(s) use this batch. Remove them first.`;
+    return null;
+  }
+  if (col === 'rooms') {
+    const n = db.find('sessions', (s) => s.room_id === id).length;
+    return n ? `${n} scheduled session(s) use this room.` : null;
   }
   return null;
 }
@@ -137,6 +192,12 @@ for (const col of Object.keys(schemas)) {
     const refErr = checkRefs(col, req.body);
     if (refErr) return res.status(400).json({ error: refErr, fix: 'Pick an existing record.' });
     const row = db.update(col, req.params.id, req.body);
+    // A subject has one teacher — keep its assignments in sync when it changes.
+    if (col === 'subjects' && req.body.teacher_id !== undefined) {
+      for (const a of db.find('assignments', (x) => x.subject_id === row.id)) {
+        if (String(a.teacher_id) !== String(row.teacher_id)) db.update('assignments', a.id, { teacher_id: row.teacher_id || null });
+      }
+    }
     db.addAudit({ actor_user_id: req.user.id, action: `update:${col}`, target_type: col, target_id: row.id, before: cur, after: row });
     res.json({ data: row });
   };
@@ -158,6 +219,8 @@ for (const col of Object.keys(schemas)) {
         return res.json({ data: row, note: 'Teacher has scheduled sessions, so they were deactivated instead of deleted.' });
       }
     }
+    const refErr = referencedBy(col, cur.id);
+    if (refErr) return res.status(409).json({ error: `Cannot delete — ${refErr}`, fix: 'Detach it first, then delete.' });
     db.remove(col, req.params.id);
     db.addAudit({ actor_user_id: req.user.id, action: `delete:${col}`, target_type: col, target_id: req.params.id, before: cur });
     res.json({ ok: true });

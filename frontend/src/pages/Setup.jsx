@@ -18,7 +18,7 @@ function buildTimings(n) {
 
 const emptyTeacher = { name: '', department: '', maxHoursDay: 6, maxHoursWeek: 24 };
 const emptyRoom = { name: '', capacity: 60, type: 'lecture' };
-const emptySubject = { code: '', name: '', type: 'theory', sessionsPerWeek: 3, periodsPerSession: 1 };
+const emptySubject = { code: '', name: '', type: 'theory', sessionsPerWeek: 3, periodsPerSession: 1, department: '', teacher: '' };
 const emptyBatch = { program: '', semester: 1, division: 'A', strength: 60 };
 const emptyAccount = { name: '', email: '', password: '', role: 'student', teacher_id: '', batch_id: '' };
 
@@ -66,10 +66,14 @@ export default function Setup() {
 
   // Rooms
   const roomCreate = useSave((b) => apiPost('/api/rooms', b), ['rooms']);
+  const roomDelete = useSave((id) => apiDelete(`/api/rooms/${id}`), ['rooms']);
 
   // Subjects + batches + assignments
   const subjectCreate = useSave((b) => apiPost('/api/subjects', b), ['subjects']);
+  const subjectUpdate = useSave(({ id, b }) => apiPut(`/api/subjects/${id}`, b), ['subjects', 'assignments']);
+  const subjectDelete = useSave((id) => apiDelete(`/api/subjects/${id}`), ['subjects']);
   const batchCreate = useSave((b) => apiPost('/api/batches', b), ['batches']);
+  const batchDelete = useSave((id) => apiDelete(`/api/batches/${id}`), ['batches']);
   const assignCreate = useSave((b) => apiPost('/api/assignments', b), ['assignments']);
 
   // Accounts (teacher + student logins)
@@ -94,8 +98,9 @@ export default function Setup() {
   const [teacherEditId, setTeacherEditId] = useState(null);
   const [roomForm, setRoomForm] = useState(emptyRoom);
   const [subjectForm, setSubjectForm] = useState(emptySubject);
+  const [subjectEditId, setSubjectEditId] = useState(null);
   const [batchForm, setBatchForm] = useState(emptyBatch);
-  const [assignForm, setAssignForm] = useState({ subjectId: '', batchId: '', teacherId: '', requiredRoomType: 'lecture' });
+  const [assignForm, setAssignForm] = useState({ subjectId: '', batchId: '', requiredRoomType: 'lecture' });
   const [accountForm, setAccountForm] = useState(emptyAccount);
   const [accountEditId, setAccountEditId] = useState(null);
   const [availFor, setAvailFor] = useState(null);
@@ -137,6 +142,36 @@ export default function Setup() {
     setTeacherForm({ name: t.name || '', department: t.department_id || '', maxHoursDay: t.max_hours_day ?? 6, maxHoursWeek: t.max_hours_week ?? 24 });
   };
   const cancelTeacherEdit = () => { setTeacherEditId(null); setTeacherForm(emptyTeacher); };
+
+  // ---- Subjects handlers (one teacher per subject) ----
+  const teacherById = (id) => list(teachers).find((t) => t.id === id);
+  const teacherOptions = list(teachers).filter((t) => !subjectForm.department || t.department_id === subjectForm.department);
+  const submitSubject = () => {
+    const body = {
+      code: subjectForm.code, name: subjectForm.name, type: subjectForm.type,
+      sessions_per_week: subjectForm.sessionsPerWeek, periods_per_session: subjectForm.periodsPerSession
+    };
+    if (subjectEditId) {
+      body.department_id = subjectForm.department || null;
+      body.teacher_id = subjectForm.teacher || null;
+      subjectUpdate.mutate({ id: subjectEditId, b: body });
+    } else {
+      if (subjectForm.department) body.department_id = subjectForm.department;
+      if (subjectForm.teacher) body.teacher_id = subjectForm.teacher;
+      subjectCreate.mutate(body);
+    }
+    setSubjectForm(emptySubject);
+    setSubjectEditId(null);
+  };
+  const editSubject = (s) => {
+    setSubjectEditId(s.id);
+    setSubjectForm({
+      code: s.code || '', name: s.name || '', type: s.type || 'theory',
+      sessionsPerWeek: s.sessions_per_week ?? 3, periodsPerSession: s.periods_per_session ?? 1,
+      department: s.department_id || '', teacher: s.teacher_id || ''
+    });
+  };
+  const cancelSubjectEdit = () => { setSubjectEditId(null); setSubjectForm(emptySubject); };
 
   const openAvail = (t) => {
     setAvailFor(t.id);
@@ -209,6 +244,8 @@ export default function Setup() {
   }
 
   const accountList = list(users);
+  const assignSubject = list(subjects).find((s) => s.id === assignForm.subjectId);
+  const assignTeacher = assignSubject ? teacherById(assignSubject.teacher_id) : null;
 
   return (
     <div className="stack">
@@ -362,7 +399,19 @@ export default function Setup() {
           </div>
           <div><button type="button" className="btn btn-gradient" disabled={roomCreate.isPending || !roomForm.name || !canWrite} onClick={() => roomCreate.mutate(roomForm)}>Add room</button></div>
           {rooms.isLoading ? <div className="skeleton" style={{ height: 60 }} /> : list(rooms).length === 0 ? <p className="muted">No rooms yet — labs count too.</p> : (
-            <ul>{list(rooms).map((r) => <li key={r.id}>{r.name} · {r.type} · {r.capacity}</li>)}</ul>
+            <div className="stack">
+              {list(rooms).map((r) => (
+                <div key={r.id} className="glass card list-row" style={{ padding: 12 }}>
+                  <div>
+                    <strong>{r.name}</strong>
+                    <div className="microcopy">{r.type} · capacity {r.capacity}</div>
+                  </div>
+                  <div className="row">
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={!canWrite || roomDelete.isPending} onClick={() => roomDelete.mutate(r.id)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -371,6 +420,7 @@ export default function Setup() {
         <div className="stack">
           <div className="glass card stack">
             <h3>Subjects ({list(subjects).length})</h3>
+            <p className="microcopy" style={{ margin: 0 }}>Each subject belongs to a department and is taught by <strong>one teacher</strong>. A teacher can take several subjects.</p>
             <div className="form-grid">
               <label className="field"><span className="lbl">Code</span><input className="input" value={subjectForm.code} onChange={(e) => setSubjectForm({ ...subjectForm, code: e.target.value })} placeholder="CS301" /></label>
               <label className="field"><span className="lbl">Name</span><input className="input" value={subjectForm.name} onChange={(e) => setSubjectForm({ ...subjectForm, name: e.target.value })} placeholder="DBMS" /></label>
@@ -381,8 +431,45 @@ export default function Setup() {
                 </select>
               </label>
               <label className="field"><span className="lbl">Sessions / week</span><input className="input" type="number" value={subjectForm.sessionsPerWeek} onChange={(e) => setSubjectForm({ ...subjectForm, sessionsPerWeek: Number(e.target.value) })} /></label>
+              <label className="field"><span className="lbl">Department</span>
+                <select className="select" value={subjectForm.department} onChange={(e) => setSubjectForm({ ...subjectForm, department: e.target.value, teacher: '' })}>
+                  <option value="">— none —</option>
+                  {list(departments).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </label>
+              <label className="field"><span className="lbl">Teacher (only one)</span>
+                <select className="select" value={subjectForm.teacher} onChange={(e) => setSubjectForm({ ...subjectForm, teacher: e.target.value })}>
+                  <option value="">— none —</option>
+                  {teacherOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </label>
             </div>
-            <div><button type="button" className="btn btn-gradient" disabled={subjectCreate.isPending || !subjectForm.name || !canWrite} onClick={() => subjectCreate.mutate({ code: subjectForm.code, name: subjectForm.name, type: subjectForm.type, sessions_per_week: subjectForm.sessionsPerWeek, periods_per_session: subjectForm.periodsPerSession })}>Add subject</button></div>
+            <div className="row">
+              <button type="button" className="btn btn-gradient" disabled={(subjectEditId ? subjectUpdate : subjectCreate).isPending || !subjectForm.code || !subjectForm.name || !canWrite} onClick={submitSubject}>
+                {subjectEditId ? 'Save subject' : 'Add subject'}
+              </button>
+              {subjectEditId && <button type="button" className="btn btn-ghost" onClick={cancelSubjectEdit}>Cancel</button>}
+            </div>
+            {list(subjects).length === 0 ? <p className="muted">No subjects yet.</p> : (
+              <div className="stack">
+                {list(subjects).map((s) => (
+                  <div key={s.id} className="glass card list-row" style={{ padding: 12 }}>
+                    <div>
+                      <strong>{s.code} · {s.name}</strong>
+                      <div className="microcopy">
+                        {s.type} · {s.sessions_per_week}/week
+                        {s.department_id ? ` · ${depName(s.department_id)}` : ' · no dept'}
+                        {s.teacher_id ? ` · ${teacherById(s.teacher_id)?.name || s.teacher_id}` : ' · no teacher'}
+                      </div>
+                    </div>
+                    <div className="row">
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={!canWrite} onClick={() => editSubject(s)}>Edit</button>
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={!canWrite || subjectDelete.isPending} onClick={() => subjectDelete.mutate(s.id)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="glass card stack">
             <h3>Batches ({list(batches).length})</h3>
@@ -393,13 +480,29 @@ export default function Setup() {
               <label className="field"><span className="lbl">Strength</span><input className="input" type="number" value={batchForm.strength} onChange={(e) => setBatchForm({ ...batchForm, strength: Number(e.target.value) })} /></label>
             </div>
             <div><button type="button" className="btn btn-gradient" disabled={batchCreate.isPending || !batchForm.program || !canWrite} onClick={() => batchCreate.mutate(batchForm)}>Add batch</button></div>
+            {list(batches).length === 0 ? <p className="muted">No batches yet.</p> : (
+              <div className="stack">
+                {list(batches).map((b) => (
+                  <div key={b.id} className="glass card list-row" style={{ padding: 12 }}>
+                    <div>
+                      <strong>{b.program} · Sem {b.semester} · Div {b.division}</strong>
+                      <div className="microcopy">strength {b.strength}{b.parent_batch_id ? ` · part of ${b.parent_batch_id}` : ''}</div>
+                    </div>
+                    <div className="row">
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={!canWrite || batchDelete.isPending} onClick={() => batchDelete.mutate(b.id)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {step === 4 && (
         <div className="glass card stack">
-          <h3>Assignments — who teaches what to whom</h3>
+          <h3>Assignments — which subject a batch studies</h3>
+          <p className="microcopy" style={{ margin: 0 }}>Pick the subject and batch. The teacher comes from the subject (one teacher per subject), so there is nothing to choose here.</p>
           <div className="form-grid">
             <label className="field"><span className="lbl">Subject</span>
               <select className="select" value={assignForm.subjectId} onChange={(e) => setAssignForm({ ...assignForm, subjectId: e.target.value })}>
@@ -413,11 +516,8 @@ export default function Setup() {
                 {list(batches).map((b) => <option key={b.id} value={b.id}>{b.program} Sem {b.semester} Div {b.division}</option>)}
               </select>
             </label>
-            <label className="field"><span className="lbl">Teacher</span>
-              <select className="select" value={assignForm.teacherId} onChange={(e) => setAssignForm({ ...assignForm, teacherId: e.target.value })}>
-                <option value="">— pick a teacher —</option>
-                {list(teachers).map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+            <label className="field"><span className="lbl">Teacher (from subject)</span>
+              <input className="input" readOnly value={assignSubject ? (assignTeacher?.name || 'no teacher assigned') : ''} placeholder="pick a subject" />
             </label>
             <label className="field"><span className="lbl">Room type</span>
               <select className="select" value={assignForm.requiredRoomType} onChange={(e) => setAssignForm({ ...assignForm, requiredRoomType: e.target.value })}>
@@ -427,8 +527,8 @@ export default function Setup() {
               </select>
             </label>
           </div>
-          <div><button type="button" className="btn btn-gradient" disabled={assignCreate.isPending || !assignForm.subjectId || !assignForm.batchId || !assignForm.teacherId || !canWrite} onClick={() => assignCreate.mutate({ subject_id: assignForm.subjectId, batch_id: assignForm.batchId, teacher_id: assignForm.teacherId, required_room_type: assignForm.requiredRoomType })}>Link assignment</button></div>
-          <p className="microcopy">Pick from the dropdowns — no need to copy IDs.</p>
+          <div><button type="button" className="btn btn-gradient" disabled={assignCreate.isPending || !assignForm.subjectId || !assignForm.batchId || !assignTeacher || !canWrite} onClick={() => assignCreate.mutate({ subject_id: assignForm.subjectId, batch_id: assignForm.batchId, required_room_type: assignForm.requiredRoomType })}>Link assignment</button></div>
+          {assignSubject && !assignTeacher && <p className="microcopy">⚠️ {assignSubject.code} has no teacher yet — assign one in the Subjects step first.</p>}
         </div>
       )}
 

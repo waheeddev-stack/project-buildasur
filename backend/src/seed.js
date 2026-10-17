@@ -41,13 +41,15 @@ function buildSeedData() {
     { id: 'lab2', name: 'Lab 2', capacity: 65, type: 'lab' },
   ];
 
+  // Each subject belongs to a department and has exactly ONE teacher (who may
+  // teach several subjects).
   const subjects = [
-    { id: 's_dbms', code: 'CS301', name: 'DBMS', type: 'theory', sessions_per_week: 3, periods_per_session: 1 },
-    { id: 's_os', code: 'CS302', name: 'Operating Systems', type: 'theory', sessions_per_week: 3, periods_per_session: 1 },
-    { id: 's_sig', code: 'EC201', name: 'Signals', type: 'theory', sessions_per_week: 3, periods_per_session: 1 },
-    { id: 's_cir', code: 'EC202', name: 'Circuits', type: 'theory', sessions_per_week: 3, periods_per_session: 1 },
-    { id: 's_dbmslab', code: 'CS391', name: 'DBMS Lab', type: 'lab', sessions_per_week: 1, periods_per_session: 2 },
-    { id: 's_cirlab', code: 'EC392', name: 'Circuits Lab', type: 'lab', sessions_per_week: 1, periods_per_session: 2 },
+    { id: 's_dbms', code: 'CS301', name: 'DBMS', type: 'theory', sessions_per_week: 3, periods_per_session: 1, department_id: cse.id, teacher_id: 't_rao' },
+    { id: 's_os', code: 'CS302', name: 'Operating Systems', type: 'theory', sessions_per_week: 3, periods_per_session: 1, department_id: cse.id, teacher_id: 't_meena' },
+    { id: 's_dbmslab', code: 'CS391', name: 'DBMS Lab', type: 'lab', sessions_per_week: 1, periods_per_session: 2, department_id: cse.id, teacher_id: 't_kumar' },
+    { id: 's_sig', code: 'EC201', name: 'Signals', type: 'theory', sessions_per_week: 3, periods_per_session: 1, department_id: ece.id, teacher_id: 't_iyer' },
+    { id: 's_cir', code: 'EC202', name: 'Circuits', type: 'theory', sessions_per_week: 3, periods_per_session: 1, department_id: ece.id, teacher_id: 't_das' },
+    { id: 's_cirlab', code: 'EC392', name: 'Circuits Lab', type: 'lab', sessions_per_week: 1, periods_per_session: 2, department_id: ece.id, teacher_id: 't_khan' },
   ];
 
   const batches = [

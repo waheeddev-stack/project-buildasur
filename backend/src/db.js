@@ -35,6 +35,8 @@ let sqliteDb = null;
 let mysqlPool = null;
 let mysqlReady = false;
 let saveTimer = null;
+let hydrated = false; // true only after the first successful load from the real DB
+let initPromise = null; // memoized init() so hydration runs once
 
 function uid(prefix) {
   return prefix + '_' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
@@ -219,20 +221,44 @@ function migrateLegacyJson(out) {
 }
 
 // ---------- public sync API ----------
+// init(): hydrate the memory cache from the real DB exactly once.
+// index.js/scripts MUST await this before seeding or serving, so a stale
+// legacy snapshot is never persisted over live MySQL/TiDB data.
+function init() {
+  if (!initPromise) initPromise = hydrate();
+  return initPromise;
+}
+
+async function hydrate() {
+  if (DIALECT === 'sqlite') {
+    if (!cache) cache = sqliteLoad();
+    hydrated = true;
+  } else if (!hydrated) {
+    try {
+      cache = await mysqlLoadAll();
+      hydrated = true;
+    } catch (e) {
+      // DB unreachable: boot from legacy/memory read-only. persist() stays a
+      // no-op (hydrated=false) so we never clobber the real DB with a partial copy.
+      if (!cache) cache = readLegacyJson() || JSON.parse(JSON.stringify(DEFAULTS));
+      console.error(`MySQL init failed: ${e.message}`);
+      throw e;
+    }
+  }
+  for (const k of Object.keys(DEFAULTS)) if (!(k in cache)) cache[k] = DEFAULTS[k];
+  return cache;
+}
+
 function read() {
   if (cache) return cache;
   if (DIALECT === 'sqlite') {
     cache = sqliteLoad();
-    // If sqlite was empty but legacy json exists, sqliteLoad already migrated.
+    hydrated = true;
   } else {
-    // mysql: start from legacy/memory sync, refresh async in background.
+    // Best-effort synchronous snapshot while hydration runs in the background.
+    // persist() is a no-op until hydrated, so this snapshot is read-only.
     cache = readLegacyJson() || JSON.parse(JSON.stringify(DEFAULTS));
-    mysqlLoadAll().then((fromSql) => {
-      // Only overwrite if SQL has data (avoid wiping fresh seed on boot race).
-      const hasData = Object.values(fromSql).some((v) => Array.isArray(v) ? v.length > 0 : !!v);
-      if (hasData) { cache = fromSql; }
-      else { mysqlSaveAll(cache).catch(() => {}); }
-    }).catch(() => {});
+    init().catch(() => {});
   }
   for (const k of Object.keys(DEFAULTS)) if (!(k in cache)) cache[k] = DEFAULTS[k];
   return cache;
@@ -242,18 +268,21 @@ function persist() {
   if (!cache) return;
   if (DIALECT === 'sqlite') {
     try { sqliteSave(cache); } catch (e) { console.error('sqlite persist failed:', e.message); }
-  } else {
-    // Debounced async save (routes stay sync).
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { mysqlSaveAll(cache).catch((e) => console.error('mysql persist failed:', e.message)); }, 200);
+    return;
   }
+  // Guard: never flush before the initial load completes — that would DELETE and
+  // rewrite the DB with stale data (the original data-loss bug).
+  if (!hydrated) return;
+  // Debounced async save (routes stay sync).
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { mysqlSaveAll(cache).catch((e) => console.error('mysql persist failed:', e.message)); }, 200);
 }
 
-function flush() {
-  // For tests/scripts: force immediate save.
-  if (DIALECT === 'sqlite') { if (cache) sqliteSave(cache); return Promise.resolve(); }
-  if (cache) return mysqlSaveAll(cache);
-  return Promise.resolve();
+async function flush() {
+  // For tests/scripts: ensure hydration first, then force an immediate save.
+  await init().catch(() => {});
+  if (DIALECT === 'sqlite') { if (cache) sqliteSave(cache); return; }
+  if (cache && hydrated) return mysqlSaveAll(cache);
 }
 
 function all(col) { return read()[col] || []; }
@@ -302,6 +331,6 @@ async function health() {
 }
 
 module.exports = {
-  read, persist, flush, all, find, findById, insert, update, remove, uid, addAudit,
+  init, read, persist, flush, all, find, findById, insert, update, remove, uid, addAudit,
   dialect: DIALECT, health, DB_FILE: DIALECT === 'sqlite' ? SQLITE_FILE : undefined,
 };

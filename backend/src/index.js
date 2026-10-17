@@ -50,17 +50,6 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Auto-seed on first run if db empty.
-try {
-  const d = db.read();
-  if (d.users.length === 0 && d.teachers.length === 0) {
-    seedDatabase({});
-    console.log('Seeded demo data.');
-  }
-} catch (e) {
-  console.error('Auto-seed failed:', e.message);
-}
-
 app.use('/api/auth', authRoutes);
 app.use('/api/time-grid', gridRoutes);
 app.use('/api', timetablesRoutes);       // /api/timetables* (public read), /api/sessions/:id
@@ -88,7 +77,25 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`SlotSync backend on http://localhost:${PORT}`));
+  // Hydrate from the real DB FIRST, then seed-if-empty, then serve. This closes
+  // the boot race where a request could persist a stale legacy snapshot over TiDB.
+  db.init()
+    .then(() => {
+      try {
+        const d = db.read();
+        if (d.users.length === 0 && d.teachers.length === 0) {
+          seedDatabase({});
+          console.log('Seeded demo data.');
+        }
+      } catch (e) {
+        console.error('Auto-seed failed:', e.message);
+      }
+      app.listen(PORT, () => console.log(`SlotSync backend on http://localhost:${PORT}`));
+    })
+    .catch((e) => {
+      console.error(`Database init failed: ${e.message}`);
+      app.listen(PORT, () => console.log(`SlotSync backend on http://localhost:${PORT} (degraded: db not ready, writes disabled)`));
+    });
 }
 
 module.exports = app;

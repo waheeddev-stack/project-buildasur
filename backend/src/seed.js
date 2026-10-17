@@ -122,8 +122,17 @@ function seedDatabase(opts = {}) {
 }
 
 if (require.main === module) {
-  const r = seedDatabase({ force: process.argv.includes('--force') });
-  console.log(JSON.stringify(r));
+  // Hydrate first (never seed over live data), then force a synchronous save.
+  db.init()
+    .then(() => {
+      const r = seedDatabase({ force: process.argv.includes('--force') });
+      return db.flush().then(() => r);
+    })
+    .then((r) => console.log(JSON.stringify(r)))
+    .catch((e) => {
+      console.error(e.message);
+      process.exitCode = 1;
+    });
 }
 
 module.exports = { seedDatabase, buildSeedData };

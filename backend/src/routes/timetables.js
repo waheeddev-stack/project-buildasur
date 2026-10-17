@@ -33,6 +33,14 @@ function batchName(id) {
   return b ? `${b.program} Sem ${b.semester} Div ${b.division}` : 'That batch';
 }
 
+// Section/division identity: batches sharing program+semester+division (split-lab
+// sub-batches) are one section for the "no subject repeated in a day" rule.
+function sectionKey(id) {
+  const b = db.findById('batches', id);
+  if (!b || b.division == null || b.division === '') return String(id);
+  return `${b.program || ''}|${b.semester == null ? '' : b.semester}|${b.division}`;
+}
+
 // Enforce UNIQUE(timetable,slot,teacher|room|batch) with plain-language 409s.
 function clashError(timetableId, slotId, teacherId, roomId, batchId, ignoreSessionId) {
   const sessions = db.find('sessions', (s) => s.timetable_id === timetableId && (!ignoreSessionId || s.id !== ignoreSessionId));
@@ -72,16 +80,17 @@ function validatePlacement(timetableId, slotId, teacherId, roomId, batchId, assi
     if (subj && subj.type === 'lab' && room && room.type !== 'lab') {
       return { error: `${subj.name} is a lab and needs a lab room.`, fix: 'Pick a lab room.', suggestions: [] };
     }
-    // Hard rule: a batch never sits the same subject twice on the same day.
+    // Hard rule: a section/division never sits the same subject twice on the same day.
     if (subj) {
       let ignoreGroup = null;
       if (ignoreSessionId) {
         const cur = db.findById('sessions', ignoreSessionId);
         ignoreGroup = cur && cur.session_group;
       }
+      const targetSection = sectionKey(batchId);
       const repeated = db.find('sessions', (s) =>
         s.timetable_id === timetableId &&
-        s.batch_id === batchId &&
+        sectionKey(s.batch_id) === targetSection &&
         s.id !== ignoreSessionId &&
         !(ignoreGroup && s.session_group === ignoreGroup)
       ).some((s) => {

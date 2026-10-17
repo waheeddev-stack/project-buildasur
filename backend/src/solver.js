@@ -66,6 +66,14 @@ function generateTimetable(data, options = {}) {
     return false;
   };
 
+  // Section/division grouping: batches that share program+semester+division
+  // (e.g. split-lab sub-batches) count as one section for the no-repeat rule.
+  const sectionOf = (batchId) => {
+    const b = batchById.get(batchId);
+    if (!b || b.division == null || b.division === '') return String(batchId);
+    return `${b.program || ''}|${b.semester == null ? '' : b.semester}|${b.division}`;
+  };
+
   // Expand assignments into tasks.
   const tasks = [];
   for (const a of assignments) {
@@ -131,12 +139,12 @@ function generateTimetable(data, options = {}) {
   const occBatch = new Map();   // slotId -> Set batchId
   const dayHours = new Map();   // teacher|day -> periods
   const weekHours = new Map();  // teacher -> periods
-  // Hard rule: a batch never gets the same subject twice on the same day.
-  const batchDaySubject = new Map(); // batch|day -> Set subjectId
+  // Hard rule: a section/division never gets the same subject twice on the same day.
+  const sectionDaySubject = new Map(); // section|day -> Set subjectId
   const touch = (m, k) => { if (!m.has(k)) m.set(k, new Set()); return m.get(k); };
 
-  const dayHasSubject = (batchId, day, subjectId) => {
-    const set = batchDaySubject.get(`${batchId}|${day}`);
+  const dayHasSubject = (sectionId, day, subjectId) => {
+    const set = sectionDaySubject.get(`${sectionId}|${day}`);
     return !!(set && set.has(subjectId));
   };
 
@@ -148,7 +156,7 @@ function generateTimetable(data, options = {}) {
     const la = assignmentById.get(L.assignment_id);
     const lsubject = la && subjectById.get(la.subject_id);
     const lslot = slotById.get(L.slot_id);
-    if (lsubject && lslot) touch(batchDaySubject, `${L.batch_id}|${lslot.day}`).add(lsubject.id);
+    if (lsubject && lslot) touch(sectionDaySubject, `${sectionOf(L.batch_id)}|${lslot.day}`).add(lsubject.id);
   }
 
   const placed = []; // {task, block, room}
@@ -165,7 +173,7 @@ function generateTimetable(data, options = {}) {
 
   function blockFree(task, block, roomId) {
     const a = task.assignment;
-    if (dayHasSubject(a.batch_id, block[0].day, task.subject.id)) return false;
+    if (dayHasSubject(sectionOf(a.batch_id), block[0].day, task.subject.id)) return false;
     if (!teacherHoursOk(a.teacher_id, block[0].day, block.length)) return false;
     for (const s of block) {
       if (touch(occTeacher, s.id).has(a.teacher_id)) return false;
@@ -180,12 +188,12 @@ function generateTimetable(data, options = {}) {
   function occupy(task, block, room, on) {
     const a = task.assignment;
     const d = block[0].day;
-    const bsKey = `${a.batch_id}|${d}`;
+    const bsKey = `${sectionOf(a.batch_id)}|${d}`;
     if (on) {
-      touch(batchDaySubject, bsKey).add(task.subject.id);
+      touch(sectionDaySubject, bsKey).add(task.subject.id);
     } else {
-      const set = batchDaySubject.get(bsKey);
-      if (set) { set.delete(task.subject.id); if (set.size === 0) batchDaySubject.delete(bsKey); }
+      const set = sectionDaySubject.get(bsKey);
+      if (set) { set.delete(task.subject.id); if (set.size === 0) sectionDaySubject.delete(bsKey); }
     }
     dayHours.set(`${a.teacher_id}|${d}`, (dayHours.get(`${a.teacher_id}|${d}`) || 0) + (on ? block.length : -block.length));
     weekHours.set(a.teacher_id, (weekHours.get(a.teacher_id) || 0) + (on ? block.length : -block.length));

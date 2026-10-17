@@ -34,6 +34,7 @@ export default function Setup() {
   const rooms = useQuery({ queryKey: ['rooms'], queryFn: () => apiGet('/api/rooms') });
   const subjects = useQuery({ queryKey: ['subjects'], queryFn: () => apiGet('/api/subjects') });
   const batches = useQuery({ queryKey: ['batches'], queryFn: () => apiGet('/api/batches') });
+  const departments = useQuery({ queryKey: ['departments'], queryFn: () => apiGet('/api/departments') });
   const grid = useQuery({ queryKey: ['time-grid'], queryFn: () => apiGet('/api/time-grid').catch(() => null) });
   const availability = useQuery({ queryKey: ['availability'], queryFn: () => apiGet('/api/availability') });
   const users = useQuery({ queryKey: ['users'], queryFn: () => apiGet('/api/users'), enabled: canWrite });
@@ -105,6 +106,8 @@ export default function Setup() {
     if (Array.isArray(q.data)) return q.data;
     return q.data.data || q.data.items || [];
   };
+
+  const depName = (id) => list(departments).find((d) => d.id === id)?.name || id;
 
   const gridSlots = useMemo(() => (list(grid).length ? list(grid) : grid.data?.slots || []), [grid.data]);
   const availDays = useMemo(() => {
@@ -274,7 +277,12 @@ export default function Setup() {
           <h3>Teachers ({list(teachers).length})</h3>
           <div className="form-grid">
             <label className="field"><span className="lbl">Name</span><input className="input" value={teacherForm.name} onChange={(e) => setTeacherForm({ ...teacherForm, name: e.target.value })} placeholder="Dr. Rao" /></label>
-            <label className="field"><span className="lbl">Department</span><input className="input" value={teacherForm.department} onChange={(e) => setTeacherForm({ ...teacherForm, department: e.target.value })} placeholder="CSE" /></label>
+            <label className="field"><span className="lbl">Department</span>
+              <select className="select" value={teacherForm.department} onChange={(e) => setTeacherForm({ ...teacherForm, department: e.target.value })}>
+                <option value="">— none —</option>
+                {list(departments).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </label>
             <label className="field"><span className="lbl">Max hrs / day</span><input className="input" type="number" value={teacherForm.maxHoursDay} onChange={(e) => setTeacherForm({ ...teacherForm, maxHoursDay: Number(e.target.value) })} /></label>
             <label className="field"><span className="lbl">Max hrs / week</span><input className="input" type="number" value={teacherForm.maxHoursWeek} onChange={(e) => setTeacherForm({ ...teacherForm, maxHoursWeek: Number(e.target.value) })} /></label>
           </div>
@@ -291,7 +299,7 @@ export default function Setup() {
                   <div>
                     <strong>{t.name}</strong>
                     <div className="microcopy">
-                      {t.department_id || 'no dept'} · {t.max_hours_day ?? '—'} hrs/day · {t.max_hours_week ?? '—'} hrs/week
+                      {t.department_id ? depName(t.department_id) : 'no dept'} · {t.max_hours_day ?? '—'} hrs/day · {t.max_hours_week ?? '—'} hrs/week
                     </div>
                   </div>
                   <div className="row">

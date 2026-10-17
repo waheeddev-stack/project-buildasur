@@ -75,6 +75,7 @@ Passwords hashed with bcryptjs, min 10 chars. JWT access 15m + refresh in httpOn
 
 - `POST /api/auth/login`, `POST /api/auth/refresh`, `POST /api/auth/logout`, `GET /api/me`
 - CRUD `GET/POST/PUT|PATCH/DELETE /api/teachers /api/rooms /api/subjects /api/batches /api/assignments`
+- `GET /api/departments` (read-only); teacher `department_id` accepts an id or a name
 - `GET,PUT /api/time-grid`
 - `POST /api/timetables/generate` → `{jobId}`, `GET /api/jobs/:id`
 - `GET /api/timetables`, `GET /api/timetables/:id?vie w=batch|teacher|room&filter=id`

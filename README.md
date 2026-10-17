@@ -299,6 +299,9 @@ Write routes run through Zod validation and return `400` with a field-level mess
 | PUT / PATCH | `/api/{collection}/:id` | Admin (teachers/assignments also HOD, own dept) |
 | DELETE | `/api/{collection}/:id` | Admin (teachers/assignments also HOD, own dept); teachers with sessions are deactivated, not deleted |
 
+`GET /api/departments` returns the read-only department list. A teacher's `department_id`
+accepts either the id (`dep_cse`) or the name (`CSE`) — the name is normalised to the id.
+
 ### User accounts — `/api/users`
 Create and manage the teacher and student logins (email + password + role). Passwords are
 bcrypt-hashed and the hash is never returned.

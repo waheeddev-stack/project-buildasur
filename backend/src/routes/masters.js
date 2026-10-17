@@ -43,6 +43,20 @@ const schemas = {
   },
 };
 
+// Departments are read-only master data (CSE, ECE, …). Teachers reference them by id.
+router.get('/departments', requireAuth, (req, res) => {
+  res.json({ data: db.all('departments') });
+});
+
+// Accept a department id OR name from clients and resolve it to the real record.
+function resolveDepartment(value) {
+  const v = String(value == null ? '' : value).trim();
+  if (!v) return null;
+  return db.findById('departments', v)
+    || db.find('departments', (d) => String(d.name).toLowerCase() === v.toLowerCase())[0]
+    || null;
+}
+
 function writerRoles(col) {
   // teachers + assignments: admin or hod (scoped); rooms/subjects/batches: admin only
   if (col === 'teachers' || col === 'assignments') return ['admin', 'hod'];
@@ -52,8 +66,10 @@ function writerRoles(col) {
 function scopeDept(req, col, body) {
   if (req.user.role === 'admin') return null; // no restriction
   if (col === 'teachers') {
-    const dep = body.department_id || null;
-    if (dep && !deptOk(req, dep)) return 'hod-scope';
+    if (body.department_id) {
+      const dep = resolveDepartment(body.department_id);
+      if (dep && !deptOk(req, dep.id)) return 'hod-scope';
+    }
     return null;
   }
   if (col === 'assignments') {
@@ -70,7 +86,11 @@ function checkRefs(col, body) {
     if (body.batch_id && !db.findById('batches', body.batch_id)) return 'Batch not found.';
     if (body.teacher_id && !db.findById('teachers', body.teacher_id)) return 'Teacher not found.';
   }
-  if (col === 'teachers' && body.department_id && !db.findById('departments', body.department_id)) return 'Department not found.';
+  if (col === 'teachers' && body.department_id) {
+    const dep = resolveDepartment(body.department_id);
+    if (!dep) return 'Department not found.';
+    body.department_id = dep.id; // normalise name → id
+  }
   return null;
 }
 

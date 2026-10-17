@@ -207,7 +207,9 @@ Seeded on first run (and by `POST /api/seed` or `npm run seed --prefix backend`)
 | Teacher | `teacher1@slotsync.local` | `teach12345678` |
 | Student | `student1@slotsync.local` | `stud12345678` |
 
-The login screen also has one-tap buttons for each of these.
+The login screen accepts email + password only; the server authenticates the credentials and
+returns the user's role. Admin and HOD accounts provision teacher and student logins. The rows
+above are seed data for local development — create real accounts for production.
 
 ---
 

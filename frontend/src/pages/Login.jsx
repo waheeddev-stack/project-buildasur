@@ -1,37 +1,37 @@
 import { useState } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { apiPost, setAccessToken } from '../api.js';
 import { useAuth } from '../store.js';
 
-const DEMOS = [
-  { label: 'Admin demo', email: 'admin@slotsync.local', password: 'admin12345678' },
-  { label: 'HOD demo', email: 'hod.cse@slotsync.local', password: 'hod12345678' },
-  { label: 'Teacher demo', email: 'teacher1@slotsync.local', password: 'teach12345678' },
-  { label: 'Student demo', email: 'student1@slotsync.local', password: 'stud12345678' }
-];
+// Landing page per role. Accounts are provisioned by an admin or HOD; the server
+// authenticates the email + password and returns the role, which decides where we go.
+function landingFor(role) {
+  if (role === 'teacher' || role === 'student') return '/today';
+  return '/';
+}
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const from = location.state?.from || '/';
+  const from = location.state?.from || null;
   const login = useAuth((s) => s.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e, demo) => {
+  const submit = async (e) => {
     if (e) e.preventDefault();
     setError('');
     setBusy(true);
     try {
-      const creds = demo ? { email: demo.email, password: demo.password } : { email, password };
-      const data = await apiPost('/api/auth/login', creds);
+      const data = await apiPost('/api/auth/login', { email: email.trim(), password });
       const accessToken = data.accessToken || data.token || '';
+      const user = data.user || { email, name: email.split('@')[0] };
       setAccessToken(accessToken);
-      login(data.user || { email: creds.email, name: creds.email.split('@')[0] }, accessToken);
-      navigate(from, { replace: true });
+      login(user, accessToken);
+      navigate(from || landingFor(user.role), { replace: true });
     } catch (err) {
       setError(err.backendDown ? 'Start backend on :4000 — we could not reach the API.' : err.message);
     } finally {
@@ -59,29 +59,19 @@ export default function Login() {
           <form onSubmit={submit} className="stack">
             <label className="field">
               <span className="lbl">Email</span>
-              <input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@college.edu" />
+              <input className="input" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@college.edu" />
             </label>
             <label className="field">
               <span className="lbl">Password</span>
-              <input className="input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••••" />
+              <input className="input" type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••••" />
             </label>
             {error && <div className="error-box">{error}</div>}
             <button className="btn btn-gradient" disabled={busy} type="submit">
               {busy ? 'Logging you in…' : 'Log in'}
             </button>
           </form>
-          <div className="mt">
-            <p className="microcopy">Just looking around? One tap:</p>
-            <div className="row demo-row">
-              {DEMOS.map((d) => (
-                <button key={d.label} type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={(e) => submit(e, d)}>
-                  {d.label}
-                </button>
-              ))}
-            </div>
-          </div>
           <p className="microcopy mt">
-            Student? Skip the login — <Link to="/today">see today's classes</Link>.
+            Use the email and password your admin or HOD set up for you. Your role is detected automatically.
           </p>
         </motion.div>
       </main>

@@ -8,7 +8,7 @@ export function dotFor(key) {
 }
 
 // Draggable session chip: HTML5 draggable + click-to-move fallback (keyboard accessible).
-export default function SessionChip({ session, selected, onDragStart, onSelect }) {
+export default function SessionChip({ session, selected, showBatch = true, onDragStart, onSelect }) {
   const locked = session.isLocked || session.is_locked;
   const subject = session.subjectName || session.subject_name || session.subject?.name || session.subjectCode || session.subject?.code || 'Session';
   const batch = session.batchName || session.batch_name || session.batch?.name || '';
@@ -38,7 +38,7 @@ export default function SessionChip({ session, selected, onDragStart, onSelect }
       <span className="dot" style={{ background: dotFor(subject) }} aria-hidden="true" />
       <span>
         <strong>{subject}</strong>
-        {batch && <div className="microcopy">{batch}</div>}
+        {batch && showBatch && <div className="microcopy">{batch}</div>}
         {meta && <div className="microcopy">{meta}</div>}
         {locked && <div className="microcopy">🔒 locked</div>}
       </span>

@@ -63,9 +63,45 @@ export default function Grid() {
     return { breakPeriods, timingByPeriod, periods, days };
   }, [gridQuery.data]);
 
+  // ---- Batch / teacher / room-wise view: show one entity's grid at a time ----
+  // Options are derived from the timetable's own sessions so this also works on
+  // public share links (no /api/batches auth needed).
+  const entityOptions = useMemo(() => {
+    const seen = new Map();
+    for (const s of sessions) {
+      let id;
+      let label;
+      if (mode === 'batch') { id = s.batch_id; label = s.batch_name || s.batch?.name; }
+      else if (mode === 'teacher') { id = s.teacher_id; label = s.teacher_name || s.teacher?.name; }
+      else { id = s.room_id; label = s.room_name || s.room?.name; }
+      if (id == null) continue;
+      if (!seen.has(String(id))) seen.set(String(id), label || String(id));
+    }
+    return [...seen.entries()]
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+  }, [sessions, mode]);
+
+  // Default to the first entity so the grid is always one batch/teacher/room.
+  useEffect(() => {
+    if (!entityOptions.length) return;
+    if (!entityOptions.some((o) => String(o.id) === String(filterId))) setFilterId(entityOptions[0].id);
+  }, [entityOptions, filterId, setFilterId]);
+
+  const visibleSessions = useMemo(() => {
+    if (!filterId) return sessions;
+    const f = String(filterId);
+    if (mode === 'batch') return sessions.filter((s) => String(s.batch_id) === f);
+    if (mode === 'teacher') return sessions.filter((s) => String(s.teacher_id) === f);
+    if (mode === 'room') return sessions.filter((s) => String(s.room_id) === f);
+    return sessions;
+  }, [sessions, mode, filterId]);
+
+  const selectedLabel = entityOptions.find((o) => String(o.id) === String(filterId))?.label || '';
+
   const bySlot = useMemo(() => {
     const m = new Map();
-    for (const s of sessions) {
+    for (const s of visibleSessions) {
       const day = s.day || s.slot?.day || s.slotDay;
       const period = s.period ?? s.slot?.period ?? s.slotPeriod;
       if (day != null && period != null) {
@@ -75,12 +111,12 @@ export default function Grid() {
       }
     }
     return m;
-  }, [sessions]);
+  }, [visibleSessions]);
 
   const slotsInUse = useMemo(() => {
     const days = new Set();
     const periods = new Set();
-    for (const s of sessions) {
+    for (const s of visibleSessions) {
       const day = s.day || s.slot?.day;
       const period = s.period ?? s.slot?.period;
       if (day) days.add(day);
@@ -90,7 +126,7 @@ export default function Grid() {
       days: days.size ? DAYS.filter((d) => days.has(d)).concat([...days].filter((d) => !DAYS.includes(d))) : DAYS.slice(0, 5),
       periods: periods.size ? [...periods].sort((a, b) => a - b) : PERIODS.slice(0, 6)
     };
-  }, [sessions]);
+  }, [visibleSessions]);
 
   // Resolve a target slot id (from enriched sessions); backend also accepts day+period.
   const knownSlotId = (day, period) => {
@@ -222,9 +258,9 @@ export default function Grid() {
     <div className="stack">
       <div className="spread page-head">
         <div>
-          <h1 className="page-title">{meta?.term ? `${meta.term} · ` : ''}Timetable grid</h1>
+          <h1 className="page-title">{meta?.term ? `${meta.term} · ` : ''}{selectedLabel || 'Timetable grid'}</h1>
           <p className="muted" style={{ margin: 0 }}>
-            {meta?.status || 'draft'} · score {meta?.score ?? '—'} ·{' '}
+            {mode} view · {meta?.status || 'draft'} · score {meta?.score ?? '—'} ·{' '}
             {(meta?.conflicts ?? 0) === 0 ? 'No clashes. We checked twice. 🎉' : `${meta?.conflicts} conflicts`} ·{' '}
             {selectedSessionId ? 'a session is selected — click a slot to move it' : 'drag a chip, or click it then click a slot'}
           </p>
@@ -237,12 +273,17 @@ export default function Grid() {
               </button>
             ))}
           </div>
-          <input
-            className="input filter-input"
-            placeholder={`Filter ${mode} id…`}
+          <select
+            className="select filter-input"
             value={filterId}
             onChange={(e) => setFilterId(e.target.value)}
-          />
+            aria-label={`Choose ${mode}`}
+          >
+            {entityOptions.length === 0 && <option value="">No {mode}s yet</option>}
+            {entityOptions.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -302,10 +343,11 @@ export default function Grid() {
                         >
                           {cell.length === 0 && <span className="microcopy">Free period unlocked 🌤️</span>}
                           {cell.map((s) => (
-                            <SessionChip
-                              key={s.id}
-                              session={s}
-                              selected={String(selectedSessionId) === String(s.id)}
+                             <SessionChip
+                               key={s.id}
+                               session={s}
+                               showBatch={mode !== 'batch'}
+                               selected={String(selectedSessionId) === String(s.id)}
                               onSelect={onChipSelect}
                               onDragStart={(e, sess) => {
                                 e.dataTransfer.setData('application/json', JSON.stringify(sess));

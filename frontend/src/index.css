@@ -297,6 +297,19 @@ img, table { max-width: 100%; }
   .nav-right .btn { padding: 8px 10px; }
 }
 
+/* ---- setup: lists, badges, availability editor ---- */
+.list-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.12); }
+.badge-teacher { background: rgba(59,130,246,0.2); color: #93c5fd; }
+.badge-student { background: rgba(52,211,153,0.2); color: #6ee7b7; }
+.badge-hod { background: rgba(251,191,36,0.2); color: #fcd34d; }
+.badge-admin { background: rgba(236,72,153,0.2); color: #f9a8d4; }
+.avail-grid { display: grid; gap: 4px; overflow-x: auto; }
+.avail-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(40px, 1fr); align-items: center; gap: 4px; }
+.avail-row > span { text-align: center; }
+.avail-row > span:first-child { text-align: left; }
+.avail-grid input[type='checkbox'] { width: 20px; height: 20px; justify-self: center; accent-color: #8b5cf6; }
+
 /* ---- reduced motion ---- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

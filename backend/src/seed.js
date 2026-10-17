@@ -99,10 +99,10 @@ function seedDatabase(opts = {}) {
   d.teacher_unavailability.push({ teacher_id: 't_rao', day: 'Mon', period: 1 });
 
   const users = [
-    { id: 'u_admin', email: 'admin@slotsync.local', password_hash: hash('admin12345678'), role: 'admin', department_id: null, teacher_id: null, batch_id: null, is_active: true },
-    { id: 'u_hod', email: 'hod.cse@slotsync.local', password_hash: hash('hod12345678'), role: 'hod', department_id: cse.id, teacher_id: null, batch_id: null, is_active: true },
-    { id: 'u_t1', email: 'teacher1@slotsync.local', password_hash: hash('teach12345678'), role: 'teacher', department_id: cse.id, teacher_id: 't_rao', batch_id: null, is_active: true },
-    { id: 'u_s1', email: 'student1@slotsync.local', password_hash: hash('stud12345678'), role: 'student', department_id: cse.id, teacher_id: null, batch_id: 'b_cse_a', is_active: true },
+    { id: 'u_admin', name: 'Admin', email: 'admin@slotsync.local', password_hash: hash('admin12345678'), role: 'admin', department_id: null, teacher_id: null, batch_id: null, is_active: true },
+    { id: 'u_hod', name: 'HOD (CSE)', email: 'hod.cse@slotsync.local', password_hash: hash('hod12345678'), role: 'hod', department_id: cse.id, teacher_id: null, batch_id: null, is_active: true },
+    { id: 'u_t1', name: 'Dr. Rao', email: 'teacher1@slotsync.local', password_hash: hash('teach12345678'), role: 'teacher', department_id: cse.id, teacher_id: 't_rao', batch_id: null, is_active: true },
+    { id: 'u_s1', name: 'Student A1', email: 'student1@slotsync.local', password_hash: hash('stud12345678'), role: 'student', department_id: cse.id, teacher_id: null, batch_id: 'b_cse_a', is_active: true },
   ];
   d.users.push(...users);
   cse.hod_user_id = 'u_hod';

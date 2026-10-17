@@ -39,13 +39,15 @@ Monorepo with **separate** `backend/` and `frontend/` (per `PRD Clash-Free Colle
 ## Features
 
 ### Data management (setup)
-- **Teachers** — name, department, max hours/day, max hours/week, availability (unavailable day+period slots).
+- **Teachers** — create, **edit and delete** name, department, max hours/day, max hours/week, plus a built-in **availability editor** (tick the unavailable day+period slots).
 - **Rooms** — name, capacity, type (`lecture` / `lab` / `seminar`).
 - **Subjects** — code, name, type (`theory` / `lab`), weekly sessions, session length in periods.
 - **Batches** — program, semester, division, strength; optional parent batch for split-lab sub-batches.
 - **Assignments** — link subject + batch + teacher (+ required room type).
 - **Time grid** — working days, periods per day, period timings, break periods (admin only).
+- **Accounts** — admins and HODs create, **edit and delete the teacher and student logins** (email, password, role, and optional link to a teacher record or batch). Users sign in with email + password only; the server returns their role.
 - Guard rails baked in: unique room names and subject codes, referential checks on assignments, HOD department scoping, and audit logging on every write.
+- **One source of truth per role** — everyone (admin, HOD, teacher, student) reads the *same* teachers, rooms and availability lists, so a batch, teacher or room view never disagrees across roles. Writes stay role-scoped; only reads are unified.
 
 ### Timetable generation
 - **One-click generate** for a term (`POST /api/timetables/generate`) returning a `jobId`.
@@ -87,15 +89,19 @@ Server-enforced on every request (never UI-only).
 
 | Action | Admin | HOD (own dept) | Teacher | Student |
 | --- | --- | --- | --- | --- |
-| Manage teachers / assignments | All | Own department | No | No |
+| Manage teachers / assignments / availability | All | Own department | No | No |
 | Manage rooms / subjects / batches / time grid | Yes | No | No | No |
+| Manage teacher & student accounts | All | Own department | No | No |
 | Generate, edit, publish timetables | Yes | Yes | No | No |
+| View teachers / rooms / availability | All | All | All | All |
 | View timetables | All | All (read-only for others) | Own schedule | Own batch, published only |
 | Seed demo data | Yes | No | No | No |
 
 Auth details: email + password, bcrypt hashing, 15-minute access token + 7-day rotating
 refresh token in an httpOnly cookie, account lockout after 5 failed logins in 15 minutes,
 and no hard-deletion of teachers who own scheduled sessions (they are deactivated instead).
+Admins and HODs can deactivate a login instead of deleting it, and a user can never delete
+their own account or manage an admin account.
 
 ---
 
@@ -152,7 +158,7 @@ mernstack/
 │     ├─ solver.js              # Timetable engine
 │     ├─ ai.js                  # AI feature flag + fallbacks
 │     ├─ seed.js                # Demo data seeder
-│     └─ routes/                # auth, masters, grid, timetables, jobs, ai, misc
+│     └─ routes/                # auth, users, availability, masters, grid, timetables, jobs, ai, misc
 ├─ frontend/
 │  └─ src/
 │     ├─ App.jsx                # Router, auth guards, error boundary, ScrollToTop
@@ -216,7 +222,7 @@ above are seed data for local development — create real accounts for productio
 ## End-to-end flow
 
 1. **Login** → Dashboard (three stat tiles + last-timetable card).
-2. **Setup** (`/setup`) — 5-step wizard: time grid, teachers, rooms, subjects + batches, assignments. (Or `POST /api/seed` as admin.)
+2. **Setup** (`/setup`) — 6-step wizard: time grid, teachers (editable + availability), rooms, subjects + batches, assignments, accounts (teacher/student logins). (Or `POST /api/seed` as admin.)
 3. **Generate** (`/generate`) — one button; polls `GET /api/jobs/:id`; on success shows the result and a link to the grid; on failure shows the infeasibility report + top fixes.
 4. **Grid** (`/timetable/:id`) — switch Batch/Teacher/Room views, drag-and-drop with live validation, lock, publish, snapshot, export CSV/ICS, share link.
 5. **Today** (`/today`) — mobile-first day view of the latest published timetable.
@@ -227,9 +233,9 @@ above are seed data for local development — create real accounts for productio
 
 | Route | Screen | Auth |
 | --- | --- | --- |
-| `/login` | Login (centred glass card, one-tap demos) | Public (redirects home if signed in) |
+| `/login` | Login (email + password; role auto-detected) | Public (redirects home if signed in) |
 | `/` | Dashboard — stat tiles, last timetable | Required |
-| `/setup` | Setup wizard | Required |
+| `/setup` | Setup wizard (includes teacher/student account management) | Required |
 | `/generate` | Generate + live progress + result/infeasibility | Required |
 | `/timetable/:id?` | Timetable grid (latest if no id) | Public (published only) |
 | `/today` | Today view | Public (published only) |
@@ -256,11 +262,30 @@ Write routes run through Zod validation and return `400` with a field-level mess
 
 | Method | Endpoint | Who |
 | --- | --- | --- |
-| GET | `/api/{collection}` | Any authenticated user |
+| GET | `/api/{collection}` | Any authenticated user — returns the **same full list for every role** |
 | GET | `/api/{collection}/:id` | Any authenticated user |
 | POST | `/api/{collection}` | Admin (teachers/assignments also HOD, own dept) |
 | PUT / PATCH | `/api/{collection}/:id` | Admin (teachers/assignments also HOD, own dept) |
 | DELETE | `/api/{collection}/:id` | Admin (teachers/assignments also HOD, own dept); teachers with sessions are deactivated, not deleted |
+
+### User accounts — `/api/users`
+Create and manage the teacher and student logins (email + password + role). Passwords are
+bcrypt-hashed and the hash is never returned.
+
+| Method | Endpoint | Who | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/users?role=` | Admin, HOD | List accounts (optional `role` filter) |
+| POST | `/api/users` | Admin, HOD | Create a `teacher` or `student` login |
+| PUT / PATCH | `/api/users/:id` | Admin, HOD | Edit name, email, role, active flag, or password |
+| DELETE | `/api/users/:id` | Admin, HOD | Delete a login (cannot delete self or an admin) |
+
+HODs may only manage accounts in their own department and can never touch admin accounts.
+
+### Availability — `/api`
+| Method | Endpoint | Who | Purpose |
+| --- | --- | --- | --- |
+| GET | `/api/availability` | Any authenticated user | Full unavailability list, identical for every role |
+| PUT | `/api/teachers/:id/availability` | Admin, HOD (own dept) | Replace a teacher's unavailable slots with `{ slots: [{ day, period }] }` |
 
 ### Time grid
 | Method | Endpoint | Who |
@@ -391,6 +416,9 @@ Frontend (`frontend/package.json`): `dev` (port 5173), `build`, `preview`.
 - A live end-to-end smoke run exercises: login → generate → job reaches a terminal status →
   newest-first listing → enriched session payload → blocked move returns a reason + suggestions →
   successful move by `day`+`period` → anonymous draft blocked / published readable → refresh token round-trip.
+- A roles/accounts smoke run checks: admin and HOD see the **same** teacher list and availability →
+  availability write is visible to the other role → create / edit / login-with-new-password / delete
+  a teacher or student account → unauthenticated `/api/users` returns `401` → duplicate email returns `409`.
 - `GET /api/health` reports the active dialect and connectivity.
 
 The PRD's release gates (see §9.1) call for an automated clash audit before any publish (implemented),

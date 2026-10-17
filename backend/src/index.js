@@ -15,6 +15,8 @@ const timetablesRoutes = require('./routes/timetables');
 const jobsRoutes = require('./routes/jobs');
 const aiRoutes = require('./routes/ai');
 const miscRoutes = require('./routes/misc');
+const usersRoutes = require('./routes/users');
+const availabilityRoutes = require('./routes/availability');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -49,6 +51,8 @@ app.use('/api/time-grid', gridRoutes);
 app.use('/api', timetablesRoutes);       // /api/timetables* (public read), /api/sessions/:id
 app.use('/api/jobs', jobsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api', usersRoutes);            // /api/users (accounts)
+app.use('/api', availabilityRoutes);     // /api/availability, /api/teachers/:id/availability
 // misc before masters so /api/rooms/free wins over /api/rooms/:id
 app.use('/api', miscRoutes);             // /api/rooms/free, /api/audit-log, /api/seed
 app.use('/api', mastersRoutes);          // /api/teachers|rooms|subjects|batches|assignments

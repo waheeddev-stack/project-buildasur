@@ -78,11 +78,9 @@ for (const col of Object.keys(schemas)) {
   const base = `/${col}`;
 
   router.get(base, requireAuth, (req, res) => {
-    let rows = db.all(col);
-    if (req.user.role === 'hod' && col === 'teachers' && req.user.department_id) {
-      rows = rows.filter((t) => t.department_id === req.user.department_id);
-    }
-    res.json({ data: rows });
+    // Everyone (admin, HOD, teacher, student) sees the same master data so the
+    // timetables stay consistent across roles. Writes remain role-scoped below.
+    res.json({ data: db.all(col) });
   });
 
   router.get(`${base}/:id`, requireAuth, (req, res) => {
